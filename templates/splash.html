@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跑姿分析系统</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="跑姿分析">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            height: 100vh;
+            width: 100vw;
+            background: #0f172a;
+        }
+
+        .splash-bg {
+            position: fixed;
+            inset: 0;
+            background: url('/static/bg.png') center center / cover no-repeat;
+            filter: brightness(0.6) saturate(1.1);
+            transform: scale(1.05);
+            transition: transform 8s ease, filter 8s ease;
+        }
+        .splash-bg.zoom {
+            transform: scale(1);
+            filter: brightness(0.45) saturate(1.2);
+        }
+
+        /* 渐变遮罩 — 底部加深让文字更清晰 */
+        .splash-overlay {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(
+                180deg,
+                rgba(15, 23, 42, 0.3) 0%,
+                rgba(15, 23, 42, 0.5) 50%,
+                rgba(15, 23, 42, 0.85) 100%
+            );
+            z-index: 1;
+        }
+
+        .splash-content {
+            position: relative;
+            z-index: 2;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .brand-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f472b6, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 0 40px rgba(139, 92, 246, 0.3);
+            animation: pulseGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 40px rgba(139, 92, 246, 0.3); }
+            50% { box-shadow: 0 0 60px rgba(139, 92, 246, 0.6); }
+        }
+
+        .brand-title {
+            font-size: clamp(2rem, 6vw, 3.5rem);
+            font-weight: 800;
+            color: white;
+            letter-spacing: 0.05em;
+            text-align: center;
+            line-height: 1.2;
+            margin-bottom: 0.75rem;
+        }
+        .brand-title span {
+            background: linear-gradient(135deg, #f472b6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .brand-sub {
+            color: rgba(255, 255, 255, 0.55);
+            font-size: clamp(0.9rem, 2vw, 1.15rem);
+            letter-spacing: 0.15em;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+
+        .btn-login {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 3.5rem;
+            border-radius: 50px;
+            background: linear-gradient(135deg, #f472b6, #8b5cf6);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            border: none;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 25px rgba(139, 92, 246, 0.35);
+            text-decoration: none;
+        }
+        .btn-login:hover {
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 8px 40px rgba(139, 92, 246, 0.55);
+        }
+        .btn-login:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        .btn-login svg {
+            width: 22px;
+            height: 22px;
+            transition: transform 0.3s;
+        }
+        .btn-login:hover svg {
+            transform: translateX(4px);
+        }
+
+        .footer-credit {
+            position: fixed;
+            bottom: 2rem;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.25);
+            font-size: 0.8rem;
+            z-index: 2;
+            letter-spacing: 0.05em;
+        }
+
+        /* 进入动画 */
+        .anim-fade-up {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeUp 0.8s ease forwards;
+        }
+        .anim-fade-up.d1 { animation-delay: 0.3s; }
+        .anim-fade-up.d2 { animation-delay: 0.6s; }
+        .anim-fade-up.d3 { animation-delay: 0.9s; }
+
+        @keyframes fadeUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 背景图 -->
+    <div class="splash-bg" id="splashBg"></div>
+    <div class="splash-overlay"></div>
+
+    <!-- 主内容 -->
+    <div class="splash-content">
+        <div class="brand-icon anim-fade-up d1">
+            <svg class="w-9 h-9 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+        </div>
+
+        <h1 class="brand-title anim-fade-up d1">
+            跑姿<span>分析</span>系统
+        </h1>
+
+        <p class="brand-sub anim-fade-up d2">
+            基于 MediaPipe 的智能跑姿评估
+        </p>
+
+        <a href="/login-page" class="btn-login anim-fade-up d3">
+            开始使用
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+        </a>
+    </div>
+
+    <div class="footer-credit">跑姿分析系统 v2.0</div>
+
+    <script>
+        // 背景微缩放效果
+        setTimeout(() => {
+            document.getElementById('splashBg').classList.add('zoom');
+        }, 200);
+    </script>
+</body>
+</html>
