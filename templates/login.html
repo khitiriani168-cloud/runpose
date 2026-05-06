@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跑姿分析系统 - 登录</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="跑姿分析">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            height: 100vh;
+            background: url('/static/bg.png') center center / cover no-repeat fixed;
+        }
+
+        /* 暗色叠加层 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 0;
+        }
+
+        /* 玻璃态卡片 */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 24px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-card input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            transition: all 0.3s;
+        }
+        .glass-card input:focus {
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.15);
+            outline: none;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+        .glass-card input::placeholder { color: rgba(255, 255, 255, 0.4); }
+
+        .btn-glow {
+            background: linear-gradient(135deg, #f472b6, #8b5cf6);
+            transition: all 0.3s;
+        }
+        .btn-glow:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(139, 92, 246, 0.4);
+        }
+
+        .link-hover { color: rgba(255, 255, 255, 0.6); transition: color 0.3s; cursor: pointer; }
+        .link-hover:hover { color: rgba(255, 255, 255, 0.9); }
+
+        .fade-in { animation: fadeIn 0.6s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .slide-up { animation: slideUp 0.5s ease forwards; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+        .error-msg {
+            color: #fca5a5;
+            font-size: 0.85rem;
+            min-height: 1.5em;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 登录卡片 -->
+    <div class="fixed inset-0 flex items-center justify-center z-10 p-4">
+        <div class="glass-card w-full max-w-md p-8 slide-up" id="login-card">
+            <!-- Logo/标题 -->
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white bg-opacity-10 mb-4">
+                    <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <h1 class="text-3xl font-bold text-white tracking-wide">跑姿分析系统</h1>
+                <p class="text-white text-opacity-50 mt-2 text-sm">基于 MediaPipe 的智能跑姿评估</p>
+            </div>
+
+            <!-- 登录表单 -->
+            <div id="login-form" class="space-y-5 fade-in">
+                <div>
+                    <input id="login-username" type="text" placeholder="用户名" class="w-full px-5 py-3.5 rounded-xl text-white text-sm" autocomplete="username" />
+                </div>
+                <div>
+                    <input id="login-password" type="password" placeholder="密码" class="w-full px-5 py-3.5 rounded-xl text-white text-sm" autocomplete="current-password" />
+                </div>
+                <div class="error-msg text-center" id="login-error">&nbsp;</div>
+                <button id="login-btn" class="btn-glow w-full py-3.5 rounded-xl text-white font-semibold text-sm tracking-wide">
+                    登 录
+                </button>
+                <div class="text-center">
+                    <span class="link-hover text-sm" onclick="showRegister()">没有账号？去注册</span>
+                </div>
+            </div>
+
+            <!-- 注册表单 -->
+            <div id="register-form" class="space-y-5 fade-in hidden">
+                <div>
+                    <input id="reg-username" type="text" placeholder="用户名" class="w-full px-5 py-3.5 rounded-xl text-white text-sm" autocomplete="off" />
+                </div>
+                <div>
+                    <input id="reg-password" type="password" placeholder="密码（至少4位）" class="w-full px-5 py-3.5 rounded-xl text-white text-sm" autocomplete="new-password" />
+                </div>
+                <div>
+                    <input id="reg-confirm" type="password" placeholder="确认密码" class="w-full px-5 py-3.5 rounded-xl text-white text-sm" autocomplete="new-password" />
+                </div>
+                <div class="error-msg text-center" id="reg-error">&nbsp;</div>
+                <button id="register-btn" class="btn-glow w-full py-3.5 rounded-xl text-white font-semibold text-sm tracking-wide">
+                    注 册
+                </button>
+                <div class="text-center">
+                    <span class="link-hover text-sm" onclick="showLogin()">已有账号？去登录</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== 注册 Service Worker (PWA) =====
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js');
+            });
+        }
+
+        // ===== 登录/注册逻辑 =====
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const loginError = document.getElementById('login-error');
+        const regError = document.getElementById('reg-error');
+
+        function showRegister() {
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+            loginError.innerHTML = '&nbsp;';
+            regError.innerHTML = '&nbsp;';
+        }
+
+        function showLogin() {
+            registerForm.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+            loginError.innerHTML = '&nbsp;';
+            regError.innerHTML = '&nbsp;';
+        }
+
+        // 登录
+        document.getElementById('login-btn').addEventListener('click', async () => {
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            if (!username || !password) {
+                loginError.textContent = '请输入用户名和密码';
+                return;
+            }
+            loginError.innerHTML = '&nbsp;';
+            try {
+                const resp = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    window.location.href = '/main';
+                } else {
+                    loginError.textContent = data.message;
+                }
+            } catch (e) {
+                loginError.textContent = '连接失败，请检查网络';
+            }
+        });
+
+        // 回车键触发登录
+        document.getElementById('login-password').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('login-btn').click();
+        });
+        document.getElementById('login-username').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('login-btn').click();
+        });
+
+        // 注册
+        document.getElementById('register-btn').addEventListener('click', async () => {
+            const username = document.getElementById('reg-username').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const confirm = document.getElementById('reg-confirm').value;
+            if (!username || !password || !confirm) {
+                regError.textContent = '请填写所有字段';
+                return;
+            }
+            if (password !== confirm) {
+                regError.textContent = '两次密码输入不一致';
+                return;
+            }
+            regError.innerHTML = '&nbsp;';
+            try {
+                const resp = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    window.location.href = '/main';
+                } else {
+                    regError.textContent = data.message;
+                }
+            } catch (e) {
+                regError.textContent = '连接失败，请检查网络';
+            }
+        });
+
+        document.getElementById('reg-confirm').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('register-btn').click();
+        });
+    </script>
+</body>
+</html>
