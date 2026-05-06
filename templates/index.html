@@ -1,0 +1,2720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跑姿分析系统 - 标准跑姿库与技术健康雷达图</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="跑姿分析">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        accent: '#6366F1',
+                        danger: '#EF4444',
+                        warning: '#F59E0B',
+                        success: '#10B981',
+                        dark: '#1E293B',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                },
+            }
+        }
+    </script>
+    <style>
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(59, 130, 246, 0.5); }
+            50% { border-color: rgba(59, 130, 246, 1); }
+        }
+        .pulse-border {
+            animation: pulse-border 2s ease-in-out infinite;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .progress-bar {
+            transition: width 0.3s ease-in-out;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .tooltip.visible {
+            opacity: 1;
+        }
+        .radar-axis {
+            stroke: #E5E7EB;
+            stroke-width: 1;
+        }
+        .radar-grid {
+            fill: none;
+            stroke: #E5E7EB;
+            stroke-width: 0.5;
+        }
+        .radar-area-standard {
+            fill: rgba(59, 130, 246, 0.2);
+            stroke: #3B82F6;
+            stroke-width: 1;
+        }
+        .radar-area-user {
+            fill: rgba(249, 115, 22, 0.3);
+            stroke: #F97316;
+            stroke-width: 2;
+        }
+        .radar-point {
+            fill: #F97316;
+            stroke: white;
+            stroke-width: 2;
+            cursor: pointer;
+        }
+        .radar-label {
+            font-size: 12px;
+            fill: #6B7280;
+            text-anchor: middle;
+        }
+        .score-circle {
+            font-size: 10px;
+            fill: #F97316;
+            font-weight: bold;
+        }
+        .phase-bar {
+            transition: width 0.5s ease-out;
+        }
+        .card-hover {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        .exercise-card {
+            transition: all 0.2s ease;
+        }
+        .exercise-card:hover {
+            border-color: #93c5fd;
+        }
+        .exercise-mini {
+            transition: all 0.15s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen">
+    <header class="bg-white shadow-md sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <i class="fa fa-heartbeat text-primary text-3xl"></i>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">跑姿分析系统</h1>
+                    <p class="text-xs text-gray-500">标准跑姿库 · 技术健康雷达图</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="status-indicator" class="flex items-center">
+                    <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+                    <span class="text-sm text-gray-600">系统就绪</span>
+                </span>
+                <button id="help-btn" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-all duration-300">
+                    <i class="fa fa-question-circle mr-1"></i> 帮助
+                </button>
+                <button id="logout-btn" class="px-4 py-2 bg-gray-100 hover:bg-red-100 rounded-lg text-gray-700 hover:text-red-600 transition-all duration-300" title="退出登录">
+                    <i class="fa fa-sign-out"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+        <!-- 分析模式选择 -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+            <div class="flex flex-wrap gap-4 justify-center">
+                <button id="mode-single" class="px-6 py-3 bg-primary text-white rounded-lg font-medium transition-all duration-300 flex items-center">
+                    <i class="fa fa-video-camera mr-2"></i>单视频分析（与标准库对比）
+                </button>
+                <button id="mode-compare" class="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-all duration-300 flex items-center">
+                    <i class="fa fa-exchange mr-2"></i>双视频对比分析
+                </button>
+                <button id="mode-progress" class="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-all duration-300 flex items-center">
+                    <i class="fa fa-line-chart mr-2"></i>进步检测（前后对比）
+                </button>
+            </div>
+        </div>
+
+        <!-- 单视频分析模式 -->
+        <div id="single-mode" class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- 左侧控制面板 -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-xl shadow-md p-6 sticky top-20">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-tasks mr-2"></i>上传视频</h3>
+
+                    <div id="model-status" class="mb-4 p-3 bg-blue-50 rounded-lg">
+                        <div class="flex items-center">
+                            <i class="fa fa-server text-blue-500 mr-2"></i>
+                            <span class="text-sm text-blue-700" id="model-status-text">检查模型状态...</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">上传跑步视频</label>
+                        <div class="flex items-center justify-center w-full">
+                            <label for="upload-video" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-primary-300 rounded-lg cursor-pointer bg-primary-50 hover:bg-primary-100 transition-all duration-300">
+                                <div class="flex flex-col items-center justify-center pt-6 pb-6">
+                                    <i class="fa fa-cloud-upload text-primary-400 text-3xl mb-2"></i>
+                                    <p class="text-sm text-gray-600"><span class="font-semibold">点击</span> 或 <span class="font-semibold">拖拽</span> 上传</p>
+                                    <p class="text-xs text-gray-500 mt-1">MP4, AVI, MOV（建议10-30秒）</p>
+                                </div>
+                                <input id="upload-video" type="file" class="hidden" accept="video/*" />
+                            </label>
+                        </div>
+                        <div id="video-status" class="mt-2 text-sm text-gray-600 hidden">
+                            <i class="fa fa-check-circle text-green-500 mr-1"></i>
+                            <span></span>
+                        </div>
+                        <div id="upload-progress-single" class="mt-2 hidden">
+                            <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                <span id="upload-progress-text-single">处理中...</span>
+                                <span id="upload-progress-pct-single">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                <div id="upload-progress-bar-single" class="bg-blue-500 h-1.5 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 跑步类型选择 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">跑步类型</label>
+                        <select id="running-type" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                            <option value="auto">自动检测</option>
+                            <option value="sprint">短跑</option>
+                            <option value="middle_distance">中长跑</option>
+                            <option value="jogging">慢跑</option>
+                            <option value="walking">竞走</option>
+                        </select>
+                    </div>
+
+                    <!-- 性别选择 -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">性别</label>
+                        <select id="gender" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                            <option value="auto">自动检测</option>
+                            <option value="male">男性</option>
+                            <option value="female">女性</option>
+                        </select>
+                    </div>
+
+                    <button id="analyze-btn" class="w-full py-3 bg-primary hover:bg-blue-600 text-white rounded-lg transition-all duration-300 mb-4 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+                        <i class="fa fa-play mr-2"></i>开始分析
+                    </button>
+
+                    <button id="clear-btn" class="w-full py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all duration-300 flex items-center justify-center">
+                        <i class="fa fa-trash mr-2"></i>清除视频
+                    </button>
+
+                    <div id="progress-container" class="mt-4 hidden">
+                        <div class="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>分析进度</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="progress-bar" class="bg-primary h-2 rounded-full progress-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧分析结果 -->
+            <div class="lg:col-span-3">
+                <!-- 视频预览 -->
+                <div id="preview-section" class="bg-white rounded-xl shadow-md p-6 mb-6">
+                    <div class="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
+                        <div class="text-center">
+                            <i class="fa fa-video-camera text-gray-300 text-5xl mb-4"></i>
+                            <p class="text-gray-500">上传视频后在此预览</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 雷达图和综合评分 -->
+                <div id="results-section" class="hidden">
+                    <!-- 综合评分 -->
+                    <div class="bg-gradient-to-r from-primary to-accent rounded-xl shadow-lg p-8 mb-6 text-white">
+                        <div class="flex flex-col md:flex-row items-center justify-between">
+                            <div class="text-center md:text-left mb-6 md:mb-0">
+                                <h3 class="text-lg font-medium opacity-80 mb-2">综合技术评分</h3>
+                                <div class="text-7xl font-bold mb-2" id="total-score">--</div>
+                                <div class="flex items-center">
+                                    <span id="score-change" class="flex items-center text-sm opacity-80">
+                                        <i class="fa fa-minus mr-1"></i> 首次分析
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="text-center md:text-right">
+                                <div class="bg-white bg-opacity-20 rounded-xl p-4">
+                                    <p class="text-sm opacity-80 mb-1">检测结果</p>
+                                    <div class="flex items-center justify-center space-x-4">
+                                        <span class="text-center">
+                                            <span class="text-2xl font-bold" id="detected-type">--</span>
+                                            <p class="text-xs opacity-80">跑步类型</p>
+                                        </span>
+                                        <span class="text-center">
+                                            <span class="text-2xl font-bold" id="detected-gender">--</span>
+                                            <p class="text-xs opacity-80">性别</p>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 雷达图区域 -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-white rounded-xl shadow-md p-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i class="fa fa-radar mr-2 text-primary"></i>技术健康雷达图
+                            </h3>
+                            <div class="flex justify-center">
+                                <svg id="radar-chart" width="350" height="350" viewBox="0 0 350 350"></svg>
+                            </div>
+                            <div class="mt-4 flex justify-center space-x-6 text-xs">
+                                <div class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-blue-500 bg-opacity-30 border border-blue-500 mr-1"></span>
+                                    <span class="text-gray-600">标准范围</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-orange-500 mr-1"></span>
+                                    <span class="text-gray-600">你的得分</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 维度得分列表 -->
+                        <div class="bg-white rounded-xl shadow-md p-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i class="fa fa-bar-chart mr-2 text-primary"></i>维度得分详情
+                            </h3>
+                            <div class="space-y-4">
+                                <div id="dimension-core" class="dimension-item">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-medium text-gray-700">核心稳定度</span>
+                                        <span class="text-lg font-bold" id="score-core">--</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-3">
+                                        <div class="h-3 rounded-full phase-bar" id="bar-core"></div>
+                                    </div>
+                                </div>
+                                <div id="dimension-leg" class="dimension-item">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-medium text-gray-700">下肢折叠效率</span>
+                                        <span class="text-lg font-bold" id="score-leg">--</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-3">
+                                        <div class="h-3 rounded-full phase-bar" id="bar-leg"></div>
+                                    </div>
+                                </div>
+                                <div id="dimension-landing" class="dimension-item">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-medium text-gray-700">着地品质</span>
+                                        <span class="text-lg font-bold" id="score-landing">--</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-3">
+                                        <div class="h-3 rounded-full phase-bar" id="bar-landing"></div>
+                                    </div>
+                                </div>
+                                <div id="dimension-propulsion" class="dimension-item">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-medium text-gray-700">推进力</span>
+                                        <span class="text-lg font-bold" id="score-propulsion">--</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-3">
+                                        <div class="h-3 rounded-full phase-bar" id="bar-propulsion"></div>
+                                    </div>
+                                </div>
+                                <div id="dimension-symmetry" class="dimension-item">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-medium text-gray-700">对称性</span>
+                                        <span class="text-lg font-bold" id="score-symmetry">--</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-3">
+                                        <div class="h-3 rounded-full phase-bar" id="bar-symmetry"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 相位得分 -->
+                    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fa fa-clock-o mr-2 text-primary"></i>步态相位得分
+                        </h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="bg-blue-50 rounded-lg p-4 text-center card-hover">
+                                <div class="text-3xl font-bold text-blue-600 mb-1" id="phase-contact">--</div>
+                                <div class="text-sm text-blue-700">着地期</div>
+                                <div class="text-xs text-gray-500 mt-1">Contact</div>
+                            </div>
+                            <div class="bg-green-50 rounded-lg p-4 text-center card-hover">
+                                <div class="text-3xl font-bold text-green-600 mb-1" id="phase-stance">--</div>
+                                <div class="text-sm text-green-700">支撑期</div>
+                                <div class="text-xs text-gray-500 mt-1">Stance</div>
+                            </div>
+                            <div class="bg-orange-50 rounded-lg p-4 text-center card-hover">
+                                <div class="text-3xl font-bold text-orange-600 mb-1" id="phase-push">--</div>
+                                <div class="text-sm text-orange-700">蹬伸期</div>
+                                <div class="text-xs text-gray-500 mt-1">Push-off</div>
+                            </div>
+                            <div class="bg-purple-50 rounded-lg p-4 text-center card-hover">
+                                <div class="text-3xl font-bold text-purple-600 mb-1" id="phase-swing">--</div>
+                                <div class="text-sm text-purple-700">摆动期</div>
+                                <div class="text-xs text-gray-500 mt-1">Swing</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 参数摘要 -->
+                    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fa fa-info-circle mr-2 text-primary"></i>关键参数摘要
+                        </h3>
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-gray-800" id="param-torso">--</div>
+                                <div class="text-xs text-gray-500">躯干前倾(°)</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-gray-800" id="param-knee-min">--</div>
+                                <div class="text-xs text-gray-500">膝角最小(°)</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-gray-800" id="param-knee-max">--</div>
+                                <div class="text-xs text-gray-500">膝角最大(°)</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-gray-800" id="param-hip">--</div>
+                                <div class="text-xs text-gray-500">髋角(°)</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-gray-800" id="param-stride">--</div>
+                                <div class="text-xs text-gray-500">步幅比</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 关键帧分析 -->
+                    <div id="frame-preview-section" class="hidden mb-6">
+                        <div class="bg-white rounded-xl shadow-md p-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-2 flex items-center">
+                                <i class="fa fa-camera mr-2 text-primary"></i>关键帧分析
+                            </h3>
+                            <p class="text-sm text-gray-500 mb-4">点击任一帧可放大查看骨架角度标注细节</p>
+                            <div id="frame-previews-container" class="flex overflow-x-auto gap-3 pb-2" style="scroll-behavior: smooth;">
+                                <!-- 缩略图由 JS 动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 优化建议 -->
+                    <div id="optimization-section" class="mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fa fa-lightbulb-o mr-2 text-warning"></i>优化建议
+                        </h3>
+                        
+                        <!-- 优先改进 -->
+                        <div id="priority-section" class="mb-4">
+                            <div class="bg-red-50 border-l-4 border-red-500 rounded-r-lg p-4">
+                                <h4 class="font-medium text-red-800 mb-2 flex items-center">
+                                    <i class="fa fa-exclamation-triangle mr-2"></i>优先改进
+                                </h4>
+                                <div id="priority-list" class="space-y-2"></div>
+                            </div>
+                        </div>
+
+                        <!-- 需要关注 -->
+                        <div id="attention-section" class="mb-4">
+                            <div class="bg-yellow-50 border-l-4 border-yellow-500 rounded-r-lg p-4">
+                                <h4 class="font-medium text-yellow-800 mb-2 flex items-center">
+                                    <i class="fa fa-alert-circle mr-2"></i>需要关注
+                                </h4>
+                                <div id="attention-list" class="space-y-2"></div>
+                            </div>
+                        </div>
+
+                        <!-- 锦上添花 -->
+                        <div id="enhance-section">
+                            <div class="bg-green-50 border-l-4 border-green-500 rounded-r-lg p-4">
+                                <h4 class="font-medium text-green-800 mb-2 flex items-center">
+                                    <i class="fa fa-check-circle mr-2"></i>锦上添花
+                                </h4>
+                                <div id="enhance-list" class="space-y-2"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 训练计划 -->
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fa fa-calendar mr-2 text-primary"></i>阶段性训练计划
+                        </h3>
+                        <div class="space-y-4">
+                            <!-- 第一阶段 -->
+                            <div class="border border-gray-200 rounded-lg p-4 bg-blue-50">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h4 class="font-medium text-blue-800">第一阶段：技术感知期</h4>
+                                    <span class="text-sm text-blue-600">第1-2周</span>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-2">目标：建立正确的动作感知</p>
+                                <p class="text-xs text-gray-500 mb-2">重点：核心稳定、着地模式 | 频率：每天15-20分钟</p>
+                                <div id="training-phase1" class="flex flex-wrap gap-2"></div>
+                            </div>
+
+                            <!-- 第二阶段 -->
+                            <div class="border border-gray-200 rounded-lg p-4 bg-green-50">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h4 class="font-medium text-green-800">第二阶段：技术强化期</h4>
+                                    <span class="text-sm text-green-600">第3-4周</span>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-2">目标：在跑步中应用新技术</p>
+                                <p class="text-xs text-gray-500 mb-2">重点：下肢力学、推进力 | 频率：每周3次跑步+2次力量</p>
+                                <div id="training-phase2" class="flex flex-wrap gap-2"></div>
+                            </div>
+
+                            <!-- 第三阶段 -->
+                            <div class="border border-gray-200 rounded-lg p-4 bg-purple-50">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h4 class="font-medium text-purple-800">第三阶段：技术巩固期</h4>
+                                    <span class="text-sm text-purple-600">第5-6周</span>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-2">目标：让新技术成为习惯</p>
+                                <p class="text-xs text-gray-500 mb-2">重点：整体协调、对称性 | 频率：正常训练强度，每2周复查</p>
+                                <div id="training-phase3" class="flex flex-wrap gap-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 加载状态 -->
+                <div id="loading-section" class="hidden">
+                    <div class="bg-white rounded-xl shadow-md p-12 text-center">
+                        <div class="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden border-2 border-gray-200 shadow-lg">
+                            <video class="w-full h-full object-cover" src="/static/loading.mp4" autoplay loop muted playsinline webkit-playsinline x5-playsinline></video>
+                        </div>
+                        <h3 class="text-xl font-medium text-gray-600 mb-2">正在分析视频...</h3>
+                        <p class="text-gray-500">请耐心等待，这可能需要几秒钟</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 双视频对比模式（旧版） -->
+        <div id="compare-mode" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-1">
+                    <div class="bg-white rounded-xl shadow-md p-6 sticky top-4">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-tasks mr-2"></i>控制面板</h3>
+
+                        <div id="model-status-compare" class="mb-4 p-3 bg-blue-50 rounded-lg">
+                            <div class="flex items-center">
+                                <i class="fa fa-server text-blue-500 mr-2"></i>
+                                <span class="text-sm text-blue-700">系统就绪</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">1. 上传标准视频（100%基准）</label>
+                            <div class="flex items-center justify-center w-full">
+                                <label for="standard-video" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-red-300 rounded-lg cursor-pointer bg-red-50 hover:bg-red-100 transition-all duration-300">
+                                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                        <i class="fa fa-cloud-upload text-red-400 text-2xl mb-2"></i>
+                                        <p class="text-sm text-gray-600"><span class="font-semibold">点击</span> 或 <span class="font-semibold">拖拽</span> 上传</p>
+                                        <p class="text-xs text-gray-500 mt-1">MP4, AVI, MOV</p>
+                                    </div>
+                                    <input id="standard-video" type="file" class="hidden" accept="video/*" />
+                                </label>
+                            </div>
+                            <div id="standard-status" class="mt-2 text-sm text-gray-600 hidden">
+                                <i class="fa fa-check-circle text-green-500 mr-1"></i>
+                                <span></span>
+                            </div>
+                            <div id="upload-progress-standard" class="mt-2 hidden">
+                                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span id="upload-progress-text-standard">处理中...</span>
+                                    <span id="upload-progress-pct-standard">0%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div id="upload-progress-bar-standard" class="bg-red-500 h-1.5 rounded-full" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">2. 上传测试视频</label>
+                            <div class="flex items-center justify-center w-full">
+                                <label for="test-video" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 transition-all duration-300">
+                                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                        <i class="fa fa-cloud-upload text-blue-400 text-2xl mb-2"></i>
+                                        <p class="text-sm text-gray-600"><span class="font-semibold">点击</span> 或 <span class="font-semibold">拖拽</span> 上传</p>
+                                        <p class="text-xs text-gray-500 mt-1">MP4, AVI, MOV</p>
+                                    </div>
+                                    <input id="test-video" type="file" class="hidden" accept="video/*" />
+                                </label>
+                            </div>
+                            <div id="test-status" class="mt-2 text-sm text-gray-600 hidden">
+                                <i class="fa fa-check-circle text-green-500 mr-1"></i>
+                                <span></span>
+                            </div>
+                            <div id="upload-progress-test" class="mt-2 hidden">
+                                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span id="upload-progress-text-test">处理中...</span>
+                                    <span id="upload-progress-pct-test">0%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div id="upload-progress-bar-test" class="bg-blue-500 h-1.5 rounded-full" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="analyze-compare-btn" class="w-full py-3 bg-danger hover:bg-red-600 text-white rounded-lg transition-all duration-300 mb-4 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+                            <i class="fa fa-play mr-2"></i>开始对比分析
+                        </button>
+
+                        <button id="clear-compare-btn" class="w-full py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all duration-300 flex items-center justify-center">
+                            <i class="fa fa-trash mr-2"></i>清除视频
+                        </button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <div id="upload-section" class="mb-6">
+                        <div class="bg-white rounded-xl shadow-md p-8 text-center">
+                            <i class="fa fa-upload text-gray-300 text-5xl mb-4"></i>
+                            <h3 class="text-xl font-medium text-gray-600 mb-2">请上传视频文件</h3>
+                            <p class="text-gray-500">上传标准视频和测试视频后，点击"开始对比分析"按钮</p>
+                        </div>
+                    </div>
+
+                    <div id="comparison-section" class="hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                                <div class="p-4 border-b-2 border-red-200 bg-red-50">
+                                    <h3 class="font-medium text-red-700">
+                                        <i class="fa fa-flag mr-2"></i>标准视频（100%基准）
+                                    </h3>
+                                </div>
+                                <div class="p-4">
+                                    <video id="standard-video-preview" class="w-full rounded-lg hidden" controls></video>
+                                    <div id="standard-placeholder" class="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center">
+                                        <span class="text-gray-400">标准视频预览</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                                <div class="p-4 border-b-2 border-blue-200 bg-blue-50">
+                                    <h3 class="font-medium text-blue-700">
+                                        <i class="fa fa-user mr-2"></i>测试视频
+                                    </h3>
+                                </div>
+                                <div class="p-4">
+                                    <video id="test-video-preview" class="w-full rounded-lg hidden" controls></video>
+                                    <div id="test-placeholder" class="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center">
+                                        <span class="text-gray-400">测试视频预览</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="results-section-compare" class="hidden">
+                            <div class="bg-gradient-to-r from-red-500 to-blue-500 rounded-xl shadow-lg p-6 mb-6 text-white">
+                                <div class="text-center">
+                                    <h3 class="text-xl font-medium mb-2">跑步经济性分析结果</h3>
+                                    <div class="text-6xl font-bold mb-2" id="economy-percentage">--%</div>
+                                    <p class="text-sm opacity-80">以标准视频为100%基准</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                <div class="bg-white rounded-xl shadow-md p-4">
+                                    <h4 class="font-medium text-gray-700 mb-3 text-center">姿态对比帧</h4>
+                                    <div class="flex justify-center">
+                                        <img id="comparison-frame" class="max-w-full rounded-lg border-2 border-gray-200" />
+                                    </div>
+                                </div>
+
+                                <div class="bg-white rounded-xl shadow-md p-4 md:col-span-2">
+                                    <h4 class="font-medium text-gray-700 mb-3 text-center">关键参数对比</h4>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-3 py-2 text-left text-gray-600">参数</th>
+                                                    <th class="px-3 py-2 text-center text-gray-600">标准值</th>
+                                                    <th class="px-3 py-2 text-center text-gray-600">测试值</th>
+                                                    <th class="px-3 py-2 text-center text-gray-600">差异</th>
+                                                    <th class="px-3 py-2 text-center text-gray-600">状态</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="params-table-body"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <h4 class="font-medium text-gray-700 mb-4 text-center">
+                                    <i class="fa fa-film mr-2"></i>对比视频序列
+                                </h4>
+                                <div class="flex flex-wrap justify-center gap-2" id="comparison-frames-container"></div>
+                                <div class="mt-4 flex justify-center items-center space-x-4">
+                                    <button id="prev-frame" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center">
+                                        <i class="fa fa-chevron-left"></i>
+                                    </button>
+                                    <span id="frame-counter" class="px-4 py-2 bg-gray-100 rounded-lg">1 / 20</span>
+                                    <button id="next-frame" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center">
+                                        <i class="fa fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="loading-section-compare" class="hidden">
+                            <div class="bg-white rounded-xl shadow-md p-12 text-center">
+                                <div class="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden border-2 border-gray-200 shadow-lg">
+                            <video class="w-full h-full object-cover" src="/static/loading.mp4" autoplay loop muted playsinline webkit-playsinline x5-playsinline></video>
+                        </div>
+                                <h3 class="text-xl font-medium text-gray-600 mb-2">正在分析视频...</h3>
+                                <p class="text-gray-500">请耐心等待，这可能需要几秒钟</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 进步检测模式 -->
+    <div id="progress-mode" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-xl shadow-md p-6 sticky top-20">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-tasks mr-2"></i>上传视频</h3>
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">1. 以前的视频（训练前）</label>
+                        <div class="flex items-center justify-center w-full">
+                            <label for="before-video" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-orange-300 rounded-lg cursor-pointer bg-orange-50 hover:bg-orange-100 transition-all duration-300">
+                                <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                    <i class="fa fa-history text-orange-400 text-2xl mb-2"></i>
+                                    <p class="text-sm text-gray-600"><span class="font-semibold">点击</span> 上传训练前视频</p>
+                                    <p class="text-xs text-gray-500 mt-1">MP4, AVI, MOV</p>
+                                </div>
+                                <input id="before-video" type="file" class="hidden" accept="video/*" />
+                            </label>
+                        </div>
+                        <div id="before-status" class="mt-2 text-sm text-gray-600 hidden">
+                            <i class="fa fa-check-circle text-green-500 mr-1"></i>
+                            <span></span>
+                        </div>
+                        <div id="upload-progress-before" class="mt-2 hidden">
+                            <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                <span id="upload-progress-text-before">处理中...</span>
+                                <span id="upload-progress-pct-before">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                <div id="upload-progress-bar-before" class="bg-orange-500 h-1.5 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">2. 现在的视频（训练后）</label>
+                        <div class="flex items-center justify-center w-full">
+                            <label for="after-video" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-green-300 rounded-lg cursor-pointer bg-green-50 hover:bg-green-100 transition-all duration-300">
+                                <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                    <i class="fa fa-video-camera text-green-400 text-2xl mb-2"></i>
+                                    <p class="text-sm text-gray-600"><span class="font-semibold">点击</span> 上传训练后视频</p>
+                                    <p class="text-xs text-gray-500 mt-1">MP4, AVI, MOV</p>
+                                </div>
+                                <input id="after-video" type="file" class="hidden" accept="video/*" />
+                            </label>
+                        </div>
+                        <div id="after-status" class="mt-2 text-sm text-gray-600 hidden">
+                            <i class="fa fa-check-circle text-green-500 mr-1"></i>
+                            <span></span>
+                        </div>
+                        <div id="upload-progress-after" class="mt-2 hidden">
+                            <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                <span id="upload-progress-text-after">处理中...</span>
+                                <span id="upload-progress-pct-after">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                <div id="upload-progress-bar-after" class="bg-green-500 h-1.5 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="analyze-progress-btn" class="w-full py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-all duration-300 mb-4 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+                        <i class="fa fa-line-chart mr-2"></i>开始进步检测
+                    </button>
+                    <button id="clear-progress-btn" class="w-full py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all duration-300 flex items-center justify-center">
+                        <i class="fa fa-trash mr-2"></i>清除视频
+                    </button>
+                </div>
+            </div>
+            <div class="lg:col-span-2">
+                <div id="progress-upload-placeholder" class="mb-6">
+                    <div class="bg-white rounded-xl shadow-md p-12 text-center">
+                        <i class="fa fa-line-chart text-gray-300 text-5xl mb-4"></i>
+                        <h3 class="text-xl font-medium text-gray-600 mb-2">请上传训练前后的视频</h3>
+                        <p class="text-gray-500">上传以前的视频和现在的视频后，点击"开始进步检测"按钮</p>
+                    </div>
+                </div>
+                <div id="progress-results" class="hidden">
+                    <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl shadow-lg p-8 mb-6 text-white">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-medium opacity-80">总体进步评估</h3>
+                                <div class="text-5xl font-bold mt-1" id="progress-total-score">--</div>
+                                <p class="text-sm opacity-80 mt-1" id="progress-assessment-summary"></p>
+                            </div>
+                            <div class="flex gap-4">
+                                <div class="bg-white bg-opacity-15 rounded-xl p-4 text-center min-w-[100px]">
+                                    <p class="text-xs opacity-80">训练前</p>
+                                    <p class="text-2xl font-bold" id="progress-before-total">--</p>
+                                </div>
+                                <div class="bg-white bg-opacity-15 rounded-xl p-4 text-center min-w-[100px]">
+                                    <p class="text-xs opacity-80">训练后</p>
+                                    <p class="text-2xl font-bold" id="progress-after-total">--</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-radar mr-2 text-primary"></i>雷达图变化对比</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="text-center">
+                                <h4 class="text-sm font-medium text-orange-600 mb-2">训练前</h4>
+                                <svg id="radar-before-chart" width="280" height="280" viewBox="0 0 280 280" class="mx-auto"></svg>
+                            </div>
+                            <div class="text-center">
+                                <h4 class="text-sm font-medium text-green-600 mb-2">训练后</h4>
+                                <svg id="radar-after-chart" width="280" height="280" viewBox="0 0 280 280" class="mx-auto"></svg>
+                            </div>
+                            <div class="text-center">
+                                <h4 class="text-sm font-medium text-indigo-600 mb-2">叠加对比</h4>
+                                <svg id="radar-overlay-chart" width="280" height="280" viewBox="0 0 280 280" class="mx-auto"></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6" id="dimension-delta-container"></div>
+                    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-table mr-2 text-primary"></i>关键参数对比</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="bg-gray-100">
+                                        <th class="px-3 py-2 text-left text-gray-600">参数</th>
+                                        <th class="px-3 py-2 text-center text-gray-600">训练前</th>
+                                        <th class="px-3 py-2 text-center text-gray-600">训练后</th>
+                                        <th class="px-3 py-2 text-center text-gray-600">变化</th>
+                                        <th class="px-3 py-2 text-center text-gray-600">评估</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="progress-params-table"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-check-circle mr-2 text-primary"></i>问题改善情况</h3>
+                        <div id="progress-issues" class="space-y-3"></div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-clock-o mr-2 text-primary"></i>步态相位得分变化</h3>
+                        <div id="phase-delta-container" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                    </div>
+                    <div id="progress-optimization-section" class="mb-6"></div>
+                </div>
+                <div id="loading-section-progress" class="hidden">
+                    <div class="bg-white rounded-xl shadow-md p-12 text-center">
+                        <div class="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden border-2 border-gray-200 shadow-lg">
+                            <video class="w-full h-full object-cover" src="/static/loading.mp4" autoplay loop muted playsinline webkit-playsinline x5-playsinline></video>
+                        </div>
+                        <h3 class="text-xl font-medium text-gray-600 mb-2">正在分析进步情况...</h3>
+                        <p class="text-gray-500">正在分析训练前后的视频，这可能需要几秒钟</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </main>
+
+    <footer class="bg-white shadow-inner mt-12 py-6">
+        <div class="container mx-auto px-4 text-center text-gray-600">
+            <p>© 2026 跑姿分析系统 | 标准跑姿库 · 技术健康雷达图 | 基于 MediaPipe Pose 技术</p>
+        </div>
+    </footer>
+
+    <!-- 关键帧放大查看弹窗 -->
+    <div id="frame-modal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden" onclick="closeFrameModal()">
+        <div class="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center" onclick="event.stopPropagation()">
+            <button id="close-frame-modal" class="absolute -top-10 right-0 text-white text-2xl hover:text-gray-300 z-10" onclick="closeFrameModal()">
+                <i class="fa fa-times-circle"></i>
+            </button>
+            <div class="relative flex items-center">
+                <button id="prev-frame-btn" class="absolute left-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white text-3xl w-12 h-12 rounded-full flex items-center justify-center hover:bg-opacity-70 z-10" onclick="changeFrame(-1)">
+                    <i class="fa fa-chevron-left"></i>
+                </button>
+                <img id="frame-modal-img" class="max-w-[90vw] max-h-[85vh] rounded-lg shadow-2xl" src="" alt="关键帧" />
+                <button id="next-frame-btn" class="absolute right-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white text-3xl w-12 h-12 rounded-full flex items-center justify-center hover:bg-opacity-70 z-10" onclick="changeFrame(1)">
+                    <i class="fa fa-chevron-right"></i>
+                </button>
+            </div>
+            <div id="frame-modal-counter" class="mt-3 text-white text-sm bg-black bg-opacity-50 px-4 py-1 rounded-full">1 / 20</div>
+        </div>
+    </div>
+
+    <!-- 帮助弹窗 -->
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b border-gray-200 sticky top-0 bg-white">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-semibold text-gray-800">使用帮助</h3>
+                    <button id="close-help" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="p-6">
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="font-medium text-gray-800 mb-2">系统介绍</h4>
+                        <p class="text-gray-600">本系统通过分析跑步时的身体姿态，与预置的标准跑姿库进行对比，生成技术健康雷达图和个性化优化建议。</p>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-gray-800 mb-2">分析模式</h4>
+                        <ul class="text-gray-600 list-disc list-inside space-y-1">
+                            <li><strong>单视频分析</strong>：上传您的跑步视频，系统自动与标准跑姿库对比，生成雷达图和优化建议</li>
+                            <li><strong>双视频对比</strong>：上传两个视频进行直接对比分析（传统模式）</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-gray-800 mb-2">雷达图维度说明</h4>
+                        <ul class="text-gray-600 list-disc list-inside space-y-1">
+                            <li><strong>核心稳定度</strong>：躯干在跑步过程中的稳定程度</li>
+                            <li><strong>下肢折叠效率</strong>：下肢在摆动期折叠和蹬伸期伸展的效率</li>
+                            <li><strong>着地品质</strong>：脚着地时的位置和方式</li>
+                            <li><strong>推进力</strong>：蹬伸阶段的发力质量</li>
+                            <li><strong>对称性</strong>：左右两侧肢体动作的一致程度</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-gray-800 mb-2">提示</h4>
+                        <ul class="text-gray-600 list-disc list-inside space-y-1">
+                            <li>建议使用侧身视角的跑步视频</li>
+                            <li>确保视频中人物清晰可见</li>
+                            <li>视频长度建议在10-30秒之间</li>
+                            <li>系统会自动检测跑步类型（短跑/中长跑/慢跑/竞走）和性别</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-200 flex justify-end">
+                <button id="close-help-btn" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg transition-all duration-300">
+                    我知道了
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 错误弹窗 -->
+    <div id="error-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <div class="text-center">
+                <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fa fa-exclamation-triangle text-red-500 text-3xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">操作失败</h3>
+                <p class="text-gray-600 mb-6" id="error-message"></p>
+                <button id="close-error-btn" class="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all duration-300">
+                    确定
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 雷达图悬停提示 -->
+    <div id="radar-tooltip" class="tooltip"></div>
+
+    <script>
+        // 检查登录状态
+        (async function() {
+            try {
+                const resp = await fetch("/api/check_session");
+                const data = await resp.json();
+                if (!data.authenticated) window.location.href = "/login-page";
+            } catch(e) { window.location.href = "/login-page"; }
+        })();
+
+
+        // 注册 Service Worker (PWA)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js');
+            });
+        }
+
+        // 全局变量
+        let videoFile = null;
+        let videoPath = null;
+        let modelLoaded = false;
+        let currentMode = 'single';
+        let analysisResult = null;
+
+        // 进步检测变量
+        let beforeVideoFile = null;
+        let beforeVideoPath = null;
+        let afterVideoFile = null;
+        let afterVideoPath = null;
+
+        // 确保加载视频在移动端自动播放
+        function playLoadingVideo(containerId) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            const v = el.querySelector('video');
+            if (v) v.play().catch(() => {});
+        }
+
+        // DOM元素
+        const modeSingleBtn = document.getElementById('mode-single');
+        const modeCompareBtn = document.getElementById('mode-compare');
+        const singleMode = document.getElementById('single-mode');
+        const compareMode = document.getElementById('compare-mode');
+        const uploadVideoInput = document.getElementById('upload-video');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const previewSection = document.getElementById('preview-section');
+        const resultsSection = document.getElementById('results-section');
+        const loadingSection = document.getElementById('loading-section');
+        const videoStatus = document.getElementById('video-status');
+        const modelStatusText = document.getElementById('model-status-text');
+        const modelStatus = document.getElementById('model-status');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+        const runningTypeSelect = document.getElementById('running-type');
+        const genderSelect = document.getElementById('gender');
+
+        // 进步检测 DOM 元素
+        const modeProgressBtn = document.getElementById('mode-progress');
+        const progressMode = document.getElementById('progress-mode');
+        const beforeVideoInput = document.getElementById('before-video');
+        const afterVideoInput = document.getElementById('after-video');
+        const beforeStatus = document.getElementById('before-status');
+        const afterStatus = document.getElementById('after-status');
+        const analyzeProgressBtn = document.getElementById('analyze-progress-btn');
+        const clearProgressBtn = document.getElementById('clear-progress-btn');
+        const loadingSectionProgress = document.getElementById('loading-section-progress');
+        const progressUploadPlaceholder = document.getElementById('progress-upload-placeholder');
+        const progressResults = document.getElementById('progress-results');
+
+        // 结果展示元素
+        const totalScoreEl = document.getElementById('total-score');
+        const scoreChangeEl = document.getElementById('score-change');
+        const detectedTypeEl = document.getElementById('detected-type');
+        const detectedGenderEl = document.getElementById('detected-gender');
+        
+        // 维度得分元素
+        const dimensionElements = {
+            core: { score: document.getElementById('score-core'), bar: document.getElementById('bar-core') },
+            leg: { score: document.getElementById('score-leg'), bar: document.getElementById('bar-leg') },
+            landing: { score: document.getElementById('score-landing'), bar: document.getElementById('bar-landing') },
+            propulsion: { score: document.getElementById('score-propulsion'), bar: document.getElementById('bar-propulsion') },
+            symmetry: { score: document.getElementById('score-symmetry'), bar: document.getElementById('bar-symmetry') }
+        };
+
+        // 相位得分元素
+        const phaseElements = {
+            contact: document.getElementById('phase-contact'),
+            stance: document.getElementById('phase-stance'),
+            push: document.getElementById('phase-push'),
+            swing: document.getElementById('phase-swing')
+        };
+
+        // 参数摘要元素
+        const paramElements = {
+            torso: document.getElementById('param-torso'),
+            kneeMin: document.getElementById('param-knee-min'),
+            kneeMax: document.getElementById('param-knee-max'),
+            hip: document.getElementById('param-hip'),
+            stride: document.getElementById('param-stride')
+        };
+
+        // 优化建议元素
+        const priorityList = document.getElementById('priority-list');
+        const attentionList = document.getElementById('attention-list');
+        const enhanceList = document.getElementById('enhance-list');
+
+        // 训练计划元素
+        const trainingPhase1 = document.getElementById('training-phase1');
+        const trainingPhase2 = document.getElementById('training-phase2');
+        const trainingPhase3 = document.getElementById('training-phase3');
+
+        // 帮助弹窗元素
+        const helpBtn = document.getElementById('help-btn');
+        const helpModal = document.getElementById('help-modal');
+        const closeHelp = document.getElementById('close-help');
+        const closeHelpBtn = document.getElementById('close-help-btn');
+
+        // 错误弹窗元素
+        const errorModal = document.getElementById('error-modal');
+        const errorMessage = document.getElementById('error-message');
+        const closeErrorBtn = document.getElementById('close-error-btn');
+
+        // 雷达图SVG
+        const radarChart = document.getElementById('radar-chart');
+
+        // 模式切换
+        modeSingleBtn.addEventListener('click', () => {
+            currentMode = 'single';
+            modeSingleBtn.classList.remove('bg-gray-100', 'text-gray-700');
+            modeSingleBtn.classList.add('bg-primary', 'text-white');
+            modeCompareBtn.classList.remove('bg-primary', 'text-white');
+            modeCompareBtn.classList.add('bg-gray-100', 'text-gray-700');
+            modeProgressBtn.classList.remove('bg-primary', 'text-white');
+            modeProgressBtn.classList.add('bg-gray-100', 'text-gray-700');
+            singleMode.classList.remove('hidden');
+            compareMode.classList.add('hidden');
+            progressMode.classList.add('hidden');
+        });
+
+        modeCompareBtn.addEventListener('click', () => {
+            currentMode = 'compare';
+            modeCompareBtn.classList.remove('bg-gray-100', 'text-gray-700');
+            modeCompareBtn.classList.add('bg-primary', 'text-white');
+            modeSingleBtn.classList.remove('bg-primary', 'text-white');
+            modeSingleBtn.classList.add('bg-gray-100', 'text-gray-700');
+            modeProgressBtn.classList.remove('bg-primary', 'text-white');
+            modeProgressBtn.classList.add('bg-gray-100', 'text-gray-700');
+            compareMode.classList.remove('hidden');
+            singleMode.classList.add('hidden');
+            progressMode.classList.add('hidden');
+        });
+
+        modeProgressBtn.addEventListener('click', () => {
+            currentMode = 'progress';
+            modeProgressBtn.classList.remove('bg-gray-100', 'text-gray-700');
+            modeProgressBtn.classList.add('bg-primary', 'text-white');
+            modeSingleBtn.classList.remove('bg-primary', 'text-white');
+            modeSingleBtn.classList.add('bg-gray-100', 'text-gray-700');
+            modeCompareBtn.classList.remove('bg-primary', 'text-white');
+            modeCompareBtn.classList.add('bg-gray-100', 'text-gray-700');
+            progressMode.classList.remove('hidden');
+            singleMode.classList.add('hidden');
+            compareMode.classList.add('hidden');
+        });
+
+        // ========== 双视频对比模式 ==========
+        let standardVideoFile = null;
+        let standardVideoPath = null;
+        let testVideoFile = null;
+        let testVideoPath = null;
+        let comparisonFrames = [];
+        let currentFrameIdx = 0;
+
+        const standardVideoInput = document.getElementById('standard-video');
+        const testVideoInput = document.getElementById('test-video');
+        const standardVideoPreview = document.getElementById('standard-video-preview');
+        const testVideoPreview = document.getElementById('test-video-preview');
+        const standardStatus = document.getElementById('standard-status');
+        const testStatus = document.getElementById('test-status');
+        const analyzeCompareBtn = document.getElementById('analyze-compare-btn');
+        const clearCompareBtn = document.getElementById('clear-compare-btn');
+        const economyPercentage = document.getElementById('economy-percentage');
+        const paramsTableBody = document.getElementById('params-table-body');
+        const comparisonFrame = document.getElementById('comparison-frame');
+        const comparisonFramesContainer = document.getElementById('comparison-frames-container');
+        const frameCounter = document.getElementById('frame-counter');
+        const prevFrameBtn = document.getElementById('prev-frame');
+        const nextFrameBtn = document.getElementById('next-frame');
+        const loadingSectionCompare = document.getElementById('loading-section-compare');
+        const resultsSectionCompare = document.getElementById('results-section-compare');
+        const comparisonSection = document.getElementById('comparison-section');
+
+        const paramLabels = {
+            'body_lean_angle': '躯干前倾角',
+            'knee_flexion_avg': '膝关节屈曲角',
+            'hip_angle_avg': '髋关节角度',
+            'elbow_flexion_avg': '肘关节角度',
+            'leg_symmetry': '腿部对称性',
+            'pelvic_tilt': '骨盆倾斜角',
+            'head_tilt': '头部倾斜角',
+            'torso_stability': '躯干稳定性',
+            'stride_ratio': '步幅比'
+        };
+
+        // 上传标准视频
+        standardVideoInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            standardVideoFile = file;
+
+            try {
+                const data = await uploadWithProgress(file, 'standard', 'standard');
+                standardVideoPath = data.video_path;
+                standardVideoPreview.src = URL.createObjectURL(file);
+                standardVideoPreview.classList.remove('hidden');
+                const placeholder = document.getElementById('standard-placeholder');
+                if (placeholder) placeholder.classList.add('hidden');
+                standardStatus.classList.remove('hidden');
+                standardStatus.querySelector('span').textContent = file.name;
+                // 显示对比区域
+                comparisonSection.classList.remove('hidden');
+                const uploadPlaceholder = document.getElementById('upload-section');
+                if (uploadPlaceholder) uploadPlaceholder.classList.add('hidden');
+            } catch (err) {
+                showError('上传标准视频失败: ' + (err.message || ''));
+            }
+
+            checkCompareBtn();
+        });
+
+        // 上传测试视频
+        testVideoInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            testVideoFile = file;
+
+            try {
+                const data = await uploadWithProgress(file, 'test', 'test');
+                testVideoPath = data.video_path;
+                testVideoPreview.src = URL.createObjectURL(file);
+                testVideoPreview.classList.remove('hidden');
+                const placeholder = document.getElementById('test-placeholder');
+                if (placeholder) placeholder.classList.add('hidden');
+                testStatus.classList.remove('hidden');
+                testStatus.querySelector('span').textContent = file.name;
+                // 显示对比区域
+                comparisonSection.classList.remove('hidden');
+                const uploadPlaceholder = document.getElementById('upload-section');
+                if (uploadPlaceholder) uploadPlaceholder.classList.add('hidden');
+            } catch (err) {
+                showError('上传测试视频失败: ' + (err.message || ''));
+            }
+
+            checkCompareBtn();
+        });
+
+        function checkCompareBtn() {
+            analyzeCompareBtn.disabled = !(standardVideoPath && testVideoPath);
+        }
+
+        // 清除视频
+        clearCompareBtn.addEventListener('click', async () => {
+            standardVideoFile = null;
+            standardVideoPath = null;
+            testVideoFile = null;
+            testVideoPath = null;
+            comparisonFrames = [];
+            currentFrameIdx = 0;
+
+            standardVideoPreview.classList.add('hidden');
+            testVideoPreview.classList.add('hidden');
+            const stdPlaceholder = document.getElementById('standard-placeholder');
+            const testPlaceholder = document.getElementById('test-placeholder');
+            if (stdPlaceholder) stdPlaceholder.classList.remove('hidden');
+            if (testPlaceholder) testPlaceholder.classList.remove('hidden');
+            standardStatus.classList.add('hidden');
+            testStatus.classList.add('hidden');
+            resultsSectionCompare.classList.add('hidden');
+            comparisonSection.classList.add('hidden');
+            standardVideoInput.value = '';
+            testVideoInput.value = '';
+
+            try { await fetch('/api/clear_videos', { method: 'POST' }); } catch (e) {}
+            checkCompareBtn();
+        });
+
+        // 开始对比分析
+        analyzeCompareBtn.addEventListener('click', async () => {
+            if (!standardVideoPath || !testVideoPath) return;
+
+            loadingSectionCompare.classList.remove('hidden');
+            playLoadingVideo('loading-section-compare');
+            comparisonSection.classList.remove('hidden');
+            resultsSectionCompare.classList.add('hidden');
+            updateStatus('正在进行双视频对比分析...', 'yellow');
+
+            try {
+                const resp = await fetch('/api/compare_videos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        standard_video: standardVideoPath,
+                        test_video: testVideoPath
+                    })
+                });
+                const data = await resp.json();
+                loadingSectionCompare.classList.add('hidden');
+
+                if (data.status === 'success') {
+                    displayCompareResults(data);
+                    updateStatus('对比分析完成', 'green');
+                } else {
+                    showError(data.message);
+                    updateStatus('分析失败', 'yellow');
+                }
+            } catch (err) {
+                loadingSectionCompare.classList.add('hidden');
+                showError('对比分析失败: ' + err.message);
+                updateStatus('分析失败', 'yellow');
+            }
+        });
+
+        function displayCompareResults(data) {
+            resultsSectionCompare.classList.remove('hidden');
+
+            // 经济性得分
+            const eco = data.economy_percentage;
+            economyPercentage.textContent = eco !== null && eco !== undefined ? eco.toFixed(1) + '%' : '--%';
+            economyPercentage.style.color = eco >= 90 ? '#10B981' : eco >= 75 ? '#F59E0B' : '#EF4444';
+
+            // 参数对比表
+            const allKeys = Object.keys(data.standard_params || {}).filter(k => k !== 'all_angles');
+            const displayKeys = Object.keys(paramLabels).filter(k => allKeys.includes(k));
+            const usedKeys = displayKeys.length > 0 ? displayKeys : allKeys;
+
+            paramsTableBody.innerHTML = usedKeys.map(key => {
+                const stdVal = data.standard_params ? data.standard_params[key] : '--';
+                const testVal = data.test_params ? data.test_params[key] : '--';
+                const diff = data.param_differences ? data.param_differences[key] : null;
+                const label = paramLabels[key] || key;
+
+                let statusIcon = '';
+                if (diff !== null) {
+                    statusIcon = diff < 5
+                        ? '<i class="fa fa-check-circle text-green-500" title="差异小"></i>'
+                        : diff < 15
+                            ? '<i class="fa fa-exclamation-triangle text-yellow-500" title="差异中等"></i>'
+                            : '<i class="fa fa-times-circle text-red-500" title="差异大"></i>';
+                }
+
+                return `
+                    <tr class="border-b border-gray-100">
+                        <td class="px-3 py-2 font-medium text-gray-700">${label}</td>
+                        <td class="px-3 py-2 text-center text-gray-600">${stdVal}</td>
+                        <td class="px-3 py-2 text-center text-gray-600">${testVal}</td>
+                        <td class="px-3 py-2 text-center text-gray-500">${diff !== null ? diff : '--'}</td>
+                        <td class="px-3 py-2 text-center">${statusIcon}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // 对比帧序列
+            comparisonFrames = data.comparison_frames || [];
+            currentFrameIdx = 0;
+
+            if (comparisonFrames.length > 0) {
+                comparisonFrame.src = 'data:image/jpeg;base64,' + comparisonFrames[0];
+                comparisonFramesContainer.innerHTML = comparisonFrames.map((frame, idx) => `
+                    <div class="comparison-thumb w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer transition-all duration-200 ${idx === 0 ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200 hover:border-blue-300'}"
+                         onclick="showComparisonFrame(${idx})">
+                        <img src="data:image/jpeg;base64,${frame}" class="w-full h-full object-cover" />
+                    </div>
+                `).join('');
+                frameCounter.textContent = `1 / ${comparisonFrames.length}`;
+            }
+
+            // 滑动到结果区域
+            resultsSectionCompare.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // 帧导航（全局函数，用于 onclick）
+        window.showComparisonFrame = function(idx) {
+            if (idx < 0 || idx >= comparisonFrames.length) return;
+            currentFrameIdx = idx;
+            comparisonFrame.src = 'data:image/jpeg;base64,' + comparisonFrames[idx];
+            frameCounter.textContent = (idx + 1) + ' / ' + comparisonFrames.length;
+
+            const thumbs = comparisonFramesContainer.querySelectorAll('.comparison-thumb');
+            thumbs.forEach((t, i) => {
+                t.classList.remove('border-blue-500', 'ring-2', 'ring-blue-300');
+                t.classList.add('border-gray-200');
+                if (i === idx) {
+                    t.classList.add('border-blue-500', 'ring-2', 'ring-blue-300');
+                    t.classList.remove('border-gray-200');
+                }
+            });
+        };
+
+        prevFrameBtn.addEventListener('click', () => {
+            if (currentFrameIdx > 0) showComparisonFrame(currentFrameIdx - 1);
+        });
+
+        nextFrameBtn.addEventListener('click', () => {
+            if (currentFrameIdx < comparisonFrames.length - 1) showComparisonFrame(currentFrameIdx + 1);
+        });
+
+        // ========== 关键帧截图预览 ==========
+        let framePreviews = [];
+        let currentPreviewIdx = 0;
+
+        function displayFramePreviews(previews) {
+            framePreviews = previews;
+            const container = document.getElementById('frame-previews-container');
+            const section = document.getElementById('frame-preview-section');
+            if (!container || !section) return;
+
+            container.innerHTML = previews.map((base64, idx) => `
+                <div class="flex-shrink-0 cursor-pointer rounded-lg overflow-hidden border-2 transition-all duration-200 ${idx === 0 ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200 hover:border-blue-400'}"
+                     style="height: 130px;"
+                     onclick="openFrameModal(${idx})">
+                    <img src="data:image/jpeg;base64,${base64}" class="h-full w-auto" alt="关键帧 ${idx+1}" />
+                </div>
+            `).join('');
+
+            section.classList.remove('hidden');
+        }
+
+        function openFrameModal(idx) {
+            if (idx < 0 || idx >= framePreviews.length) return;
+            currentPreviewIdx = idx;
+
+            const img = document.getElementById('frame-modal-img');
+            const counter = document.getElementById('frame-modal-counter');
+            const modal = document.getElementById('frame-modal');
+
+            if (!img || !counter || !modal) return;
+
+            img.src = 'data:image/jpeg;base64,' + framePreviews[idx];
+            counter.textContent = (idx + 1) + ' / ' + framePreviews.length;
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+
+            // 更新缩略图高亮
+            const container = document.getElementById('frame-previews-container');
+            if (container) {
+                const thumbs = container.querySelectorAll('.flex-shrink-0');
+                thumbs.forEach((t, i) => {
+                    t.classList.remove('border-blue-500', 'ring-2', 'ring-blue-300');
+                    t.classList.add('border-gray-200');
+                    if (i === idx) {
+                        t.classList.add('border-blue-500', 'ring-2', 'ring-blue-300');
+                        t.classList.remove('border-gray-200');
+                        // 滚动到可见
+                        t.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                    }
+                });
+            }
+        }
+
+        function closeFrameModal() {
+            const modal = document.getElementById('frame-modal');
+            if (modal) modal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+
+        function changeFrame(direction) {
+            const newIdx = currentPreviewIdx + direction;
+            if (newIdx >= 0 && newIdx < framePreviews.length) {
+                openFrameModal(newIdx);
+            }
+        }
+
+        // 关键帧弹窗键盘事件
+        document.addEventListener('keydown', function(e) {
+            const modal = document.getElementById('frame-modal');
+            if (!modal || modal.classList.contains('hidden')) return;
+            if (e.key === 'Escape') {
+                closeFrameModal();
+            } else if (e.key === 'ArrowLeft') {
+                changeFrame(-1);
+            } else if (e.key === 'ArrowRight') {
+                changeFrame(1);
+            }
+        });
+
+        // 退出登录
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        });
+
+        // 检查模型状态
+        async function checkModelStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                modelLoaded = data.model_loaded;
+                
+                if (modelLoaded) {
+                    modelStatusText.textContent = '模型加载成功，系统就绪';
+                    modelStatus.className = 'mb-4 p-3 bg-green-50 rounded-lg';
+                    modelStatus.querySelector('i').className = 'fa fa-server text-green-500 mr-2';
+                    modelStatus.querySelector('span').className = 'text-sm text-green-700';
+                } else {
+                    modelStatusText.textContent = '警告：模型未加载，系统可能无法正常工作';
+                    modelStatus.className = 'mb-4 p-3 bg-yellow-50 rounded-lg';
+                    modelStatus.querySelector('i').className = 'fa fa-exclamation-triangle text-yellow-500 mr-2';
+                    modelStatus.querySelector('span').className = 'text-sm text-yellow-700';
+                }
+            } catch (error) {
+                modelStatusText.textContent = '无法连接到服务器';
+                modelStatus.className = 'mb-4 p-3 bg-red-50 rounded-lg';
+                modelStatus.querySelector('i').className = 'fa fa-times-circle text-red-500 mr-2';
+                modelStatus.querySelector('span').className = 'text-sm text-red-700';
+            }
+        }
+
+        // 更新状态栏
+        function updateStatus(text, color) {
+            const indicator = document.querySelector('#status-indicator span:first-child');
+            const statusSpan = document.querySelector('#status-indicator span:last-child');
+            indicator.className = 'w-3 h-3 rounded-full mr-2';
+            if (color === 'green') {
+                indicator.classList.add('bg-green-500');
+                statusSpan.className = 'text-sm text-green-600';
+            } else if (color === 'red') {
+                indicator.classList.add('bg-red-500');
+                statusSpan.className = 'text-sm text-red-600';
+            } else if (color === 'yellow') {
+                indicator.classList.add('bg-yellow-500');
+                statusSpan.className = 'text-sm text-yellow-600';
+            }
+            statusSpan.textContent = text;
+        }
+
+        // 显示错误
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorModal.classList.remove('hidden');
+            updateStatus('错误', 'red');
+        }
+
+        // 隐藏错误
+        function hideError() {
+            errorModal.classList.add('hidden');
+        }
+
+        // ========== 视频压缩 + 带进度上传 ==========
+
+        // 压缩视频（640px宽度、600kbps码率，可缩小5-10倍）
+        async function compressVideo(file) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.muted = true;
+                video.playsInline = true;
+                const url = URL.createObjectURL(file);
+                video.src = url;
+
+                video.onloadedmetadata = () => {
+                    const maxW = 640;
+                    let w = video.videoWidth;
+                    let h = video.videoHeight;
+                    if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+                    w = Math.floor(w / 2) * 2 || 2;
+                    h = Math.floor(h / 2) * 2 || 2;
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+
+                    const stream = canvas.captureStream(24);
+                    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+                        ? 'video/webm;codecs=vp9' : 'video/webm;codecs=vp8';
+                    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 600000 });
+
+                    const chunks = [];
+                    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+                    video.onended = () => recorder.stop();
+                    recorder.onstop = () => { URL.revokeObjectURL(url); resolve(new Blob(chunks, {type:'video/webm'})); };
+                    recorder.onerror = reject;
+
+                    const draw = () => { if (!video.paused && !video.ended) { ctx.drawImage(video, 0, 0, w, h); requestAnimationFrame(draw); } };
+                    video.play().then(() => { recorder.start(1000); draw(); }).catch(reject);
+                };
+                video.onerror = reject;
+            });
+        }
+
+        // 上传工具：显示进度条、压缩大文件
+        function uploadWithProgress(file, videoType, prefix) {
+            const bar = document.getElementById('upload-progress-bar-' + prefix);
+            const pct = document.getElementById('upload-progress-pct-' + prefix);
+            const txt = document.getElementById('upload-progress-text-' + prefix);
+            const container = document.getElementById('upload-progress-' + prefix);
+
+            function setProgress(p, text) {
+                container.classList.remove('hidden');
+                if (bar) bar.style.width = Math.min(p, 100) + '%';
+                if (pct) pct.textContent = Math.round(p) + '%';
+                if (text && txt) txt.textContent = text;
+            }
+
+            return (async () => {
+                setProgress(0, '准备中...');
+
+                // 大文件自动压缩
+                let fileToUpload = file;
+                const isLarge = file.size > 10 * 1024 * 1024 || file.name.match(/\.(mov|avi|mkv)$/i);
+                if (isLarge) {
+                    setProgress(0, '正在压缩视频...');
+                    try {
+                        fileToUpload = await compressVideo(file);
+                        setProgress(50, '压缩完成，准备上传...');
+                    } catch (e) {
+                        console.warn('压缩失败，使用原文件:', e);
+                    }
+                }
+
+                setProgress(0, '正在上传...');
+
+                const data = await new Promise((resolve, reject) => {
+                    const fd = new FormData();
+                    const fn = isLarge ? 'compressed_' + Date.now() + '.webm' : file.name;
+                    fd.append('video', fileToUpload, fn);
+                    fd.append('video_type', videoType);
+
+                    const xhr = new XMLHttpRequest();
+                    xhr.upload.onprogress = e => {
+                        if (e.lengthComputable) setProgress((e.loaded / e.total) * 100, '正在上传...');
+                    };
+                    xhr.onload = () => {
+                        if (xhr.status === 200) { try { resolve(JSON.parse(xhr.responseText)); } catch(e) { reject(e); } }
+                        else { reject(new Error('HTTP ' + xhr.status)); }
+                    };
+                    xhr.onerror = () => reject(new Error('网络错误'));
+                    xhr.open('POST', '/api/upload_video', true);
+                    xhr.send(fd);
+                });
+
+                if (data.status === 'success') {
+                    setProgress(100, '上传成功');
+                    setTimeout(() => container.classList.add('hidden'), 2000);
+                } else {
+                    setProgress(0, '上传失败: ' + (data.message || ''));
+                    throw new Error(data.message);
+                }
+                return data;
+            })();
+        }
+
+        // 上传视频处理
+        uploadVideoInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            videoFile = file;
+            updateStatus('正在处理视频...', 'yellow');
+
+            try {
+                const data = await uploadWithProgress(file, 'test', 'single');
+                videoPath = data.video_path;
+                videoStatus.classList.remove('hidden');
+                videoStatus.querySelector('span').textContent = file.name;
+
+                // 更新预览区域
+                previewSection.innerHTML = `
+                    <div class="video-container" style="position: relative; width: 100%;">
+                        <video id="result-video" src="${URL.createObjectURL(file)}" class="w-full rounded-lg" controls style="width: 100%; display: block;"></video>
+                        <canvas id="skeleton-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none;"></canvas>
+                    </div>
+                `;
+                updateStatus('视频上传成功', 'green');
+            } catch (error) {
+                showError('上传失败: ' + (error.message || '未知错误'));
+            }
+
+            checkAnalyzeButton();
+        });
+
+        // 检查分析按钮状态
+        function checkAnalyzeButton() {
+            if (videoPath && modelLoaded) {
+                analyzeBtn.disabled = false;
+            } else {
+                analyzeBtn.disabled = true;
+            }
+        }
+
+        // ========== 进步检测模式 ==========
+
+        // 上传训练前视频
+        beforeVideoInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const data = await uploadWithProgress(file, 'before', 'before');
+                beforeVideoFile = file.name;
+                beforeVideoPath = data.video_path;
+                beforeStatus.classList.remove('hidden');
+                beforeStatus.querySelector('span').textContent = file.name;
+                checkProgressBtn();
+            } catch(e) {
+                showError('训练前视频上传失败');
+            }
+        });
+
+        // 上传训练后视频
+        afterVideoInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const data = await uploadWithProgress(file, 'after', 'after');
+                afterVideoFile = file.name;
+                afterVideoPath = data.video_path;
+                afterStatus.classList.remove('hidden');
+                afterStatus.querySelector('span').textContent = file.name;
+                checkProgressBtn();
+            } catch(e) {
+                showError('训练后视频上传失败');
+            }
+        });
+
+        function checkProgressBtn() {
+            analyzeProgressBtn.disabled = !(beforeVideoPath && afterVideoPath);
+        }
+
+        // 清除视频
+        clearProgressBtn.addEventListener('click', async () => {
+            beforeVideoFile = null;
+            beforeVideoPath = null;
+            afterVideoFile = null;
+            afterVideoPath = null;
+            beforeVideoInput.value = '';
+            afterVideoInput.value = '';
+            beforeStatus.classList.add('hidden');
+            afterStatus.classList.add('hidden');
+            progressResults.classList.add('hidden');
+            progressUploadPlaceholder.classList.remove('hidden');
+            analyzeProgressBtn.disabled = true;
+            try { await fetch('/api/clear_videos', { method: 'POST' }); } catch(e) {}
+        });
+
+        // 开始进步检测
+        analyzeProgressBtn.addEventListener('click', async () => {
+            if (!beforeVideoPath || !afterVideoPath) {
+                showError('请先上传训练前和训练后的视频');
+                return;
+            }
+            progressResults.classList.add('hidden');
+            progressUploadPlaceholder.classList.add('hidden');
+            loadingSectionProgress.classList.remove('hidden');
+            playLoadingVideo('loading-section-progress');
+
+            try {
+                const resp = await fetch('/api/analyze_progress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        before_video: beforeVideoPath,
+                        after_video: afterVideoPath,
+                        running_type: getRunningType(),
+                        gender: getGender()
+                    })
+                });
+                const data = await resp.json();
+                loadingSectionProgress.classList.add('hidden');
+                if (data.status === 'success') {
+                    displayProgressResults(data);
+                } else {
+                    showError(data.message || '进步分析失败');
+                }
+            } catch(e) {
+                loadingSectionProgress.classList.add('hidden');
+                showError('进步分析失败: ' + e.message);
+            }
+        });
+
+        // 展示进步检测结果
+        function displayProgressResults(data) {
+            const pd = data.progress_data;
+            const before = data.before;
+            const after = data.after;
+
+            // 总体进步分
+            document.getElementById('progress-total-score').textContent = pd.overall_progress_score + '分';
+            document.getElementById('progress-before-total').textContent = Math.round(before.total_score);
+            document.getElementById('progress-after-total').textContent = Math.round(after.total_score);
+            document.getElementById('progress-assessment-summary').textContent = pd.assessment.summary;
+
+            // 雷达图
+            drawProgressRadarCharts(before.radar_scores, after.radar_scores);
+
+            // 维度变化卡片
+            renderDimensionDeltas(pd.radar_comparison);
+
+            // 参数对比表
+            renderProgressParamsTable(pd.params_comparison);
+
+            // 问题改善
+            renderIssuesProgress(pd.issues_comparison);
+
+            // 步态相位
+            renderPhaseComparison(pd.phase_comparison);
+
+            // 继续改进建议（从训练后视频的 optimization_plan 获取）
+            if (after.optimization_plan) {
+                renderProgressOptimization(after.optimization_plan);
+            }
+
+            progressResults.classList.remove('hidden');
+            progressResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // 渲染维度变化卡片
+        function renderDimensionDeltas(radarComparison) {
+            const container = document.getElementById('dimension-delta-container');
+            container.innerHTML = radarComparison.map(dim => {
+                let borderColor, bgColor, icon, changeText, changeClass;
+                if (dim.direction === 'improved') {
+                    borderColor = 'border-green-500'; bgColor = 'bg-green-50';
+                    icon = 'fa-arrow-up'; changeText = '+' + dim.change; changeClass = 'text-green-600';
+                } else if (dim.direction === 'declined') {
+                    borderColor = 'border-red-500'; bgColor = 'bg-red-50';
+                    icon = 'fa-arrow-down'; changeText = dim.change; changeClass = 'text-red-600';
+                } else {
+                    borderColor = 'border-gray-300'; bgColor = 'bg-gray-50';
+                    icon = 'fa-minus'; changeText = '0'; changeClass = 'text-gray-500';
+                }
+                return `
+                    <div class="bg-white rounded-xl shadow-md p-4 border-l-4 ${borderColor}">
+                        <div class="flex items-center justify-between">
+                            <h4 class="font-medium text-gray-700">${dim.dimension_name}</h4>
+                            <span class="${changeClass} font-bold flex items-center">
+                                <i class="fa ${icon} mr-1"></i>${changeText}
+                            </span>
+                        </div>
+                        <div class="mt-2 flex justify-between text-sm">
+                            <span class="text-gray-500">训练前: <span class="font-medium text-orange-600">${dim.before_score}</span></span>
+                            <span class="text-gray-500">训练后: <span class="font-medium text-green-600">${dim.after_score}</span></span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mt-2">
+                            <div class="h-2 rounded-full ${dim.direction === 'improved' ? 'bg-green-500' : dim.direction === 'declined' ? 'bg-red-500' : 'bg-gray-400'}" style="width: ${Math.max(dim.after_score, dim.before_score)}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 渲染参数对比表
+        function renderProgressParamsTable(paramsComparison) {
+            const tbody = document.getElementById('progress-params-table');
+            tbody.innerHTML = paramsComparison.map(p => {
+                let icon, statusClass;
+                if (p.direction === 'improved') {
+                    icon = 'fa-check-circle text-green-500'; statusClass = 'text-green-600';
+                } else if (p.direction === 'declined') {
+                    icon = 'fa-times-circle text-red-500'; statusClass = 'text-red-600';
+                } else {
+                    icon = 'fa-minus-circle text-gray-400'; statusClass = 'text-gray-500';
+                }
+                const changeSign = p.change > 0 ? '+' : '';
+                return `
+                    <tr class="border-b border-gray-100">
+                        <td class="px-3 py-3 text-gray-700">${p.param_name}</td>
+                        <td class="px-3 py-3 text-center text-orange-600 font-medium">${p.before_value}${p.unit}</td>
+                        <td class="px-3 py-3 text-center text-green-600 font-medium">${p.after_value}${p.unit}</td>
+                        <td class="px-3 py-3 text-center text-gray-600">${changeSign}${p.change}${p.unit}</td>
+                        <td class="px-3 py-3 text-center ${statusClass}"><i class="fa ${icon}"></i></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 渲染问题改善情况
+        function renderIssuesProgress(issuesComparison) {
+            const container = document.getElementById('progress-issues');
+            let html = '';
+            if (issuesComparison.resolved_issues && issuesComparison.resolved_issues.length > 0) {
+                html += `<div class="p-4 bg-green-50 rounded-lg border border-green-200">
+                    <h4 class="font-medium text-green-700 flex items-center"><i class="fa fa-check-circle mr-2"></i>已解决 (${issuesComparison.resolved_issues.length})</h4>
+                    <ul class="mt-1 text-sm text-green-600 list-disc list-inside">${issuesComparison.resolved_issues.map(i => `<li>${i}</li>`).join('')}</ul>
+                </div>`;
+            }
+            if (issuesComparison.remaining_issues && issuesComparison.remaining_issues.length > 0) {
+                html += `<div class="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <h4 class="font-medium text-yellow-700 flex items-center"><i class="fa fa-exclamation-triangle mr-2"></i>仍需改进 (${issuesComparison.remaining_issues.length})</h4>
+                    <ul class="mt-1 text-sm text-yellow-600 list-disc list-inside">${issuesComparison.remaining_issues.map(i => `<li>${i}</li>`).join('')}</ul>
+                </div>`;
+            }
+            if (issuesComparison.new_issues && issuesComparison.new_issues.length > 0) {
+                html += `<div class="p-4 bg-red-50 rounded-lg border border-red-200">
+                    <h4 class="font-medium text-red-700 flex items-center"><i class="fa fa-exclamation-circle mr-2"></i>新发现问题 (${issuesComparison.new_issues.length})</h4>
+                    <ul class="mt-1 text-sm text-red-600 list-disc list-inside">${issuesComparison.new_issues.map(i => `<li>${i}</li>`).join('')}</ul>
+                </div>`;
+            }
+            if (!html) {
+                html = `<div class="p-4 bg-gray-50 rounded-lg border border-gray-200"><p class="text-gray-500 text-sm">未检测到明确的跑姿问题</p></div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        // 渲染步态相位变化
+        function renderPhaseComparison(phaseComparison) {
+            const container = document.getElementById('phase-delta-container');
+            const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
+            container.innerHTML = Object.values(phaseComparison).map((ph, i) => {
+                const changeSign = ph.change > 0 ? '+' : '';
+                const changeColor = ph.change > 2 ? 'text-green-600' : ph.change < -2 ? 'text-red-600' : 'text-gray-500';
+                return `
+                    <div class="bg-white rounded-xl shadow-md p-4 text-center" style="border-top: 3px solid ${colors[i]}">
+                        <h4 class="text-sm font-medium text-gray-600">${ph.phase_name}</h4>
+                        <div class="flex justify-around mt-2 text-sm">
+                            <span class="text-orange-600">${ph.before_score}</span>
+                            <span class="text-gray-400">→</span>
+                            <span class="text-green-600">${ph.after_score}</span>
+                        </div>
+                        <p class="text-xs ${changeColor} font-medium mt-1">${changeSign}${ph.change}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 绘制进步检测雷达图（3个SVG）
+        function drawProgressRadarCharts(beforeScores, afterScores) {
+            const dims = [
+                { key: 'core_stability', name: '核心稳定', max: 100 },
+                { key: 'leg_fold_efficiency', name: '腿部折叠', max: 100 },
+                { key: 'landing_quality', name: '落地质量', max: 100 },
+                { key: 'propulsion', name: '推进力', max: 100 },
+                { key: 'symmetry', name: '对称性', max: 100 }
+            ];
+            const center = 140, radius = 110, levels = 5;
+            const angleStep = (Math.PI * 2) / dims.length;
+
+            function getPoint(index, value) {
+                const angle = -Math.PI / 2 + index * angleStep;
+                const r = (value / 100) * radius;
+                return { x: center + r * Math.cos(angle), y: center + r * Math.sin(angle) };
+            }
+
+            function drawSingleRadar(svgId, scores, fillColor, strokeColor, labelColor) {
+                const svg = document.getElementById(svgId);
+                if (!svg) return;
+                let html = '';
+
+                // 网格
+                for (let l = 1; l <= levels; l++) {
+                    const rr = (radius / levels) * l;
+                    let pts = '';
+                    for (let i = 0; i <= dims.length; i++) {
+                        const angle = -Math.PI / 2 + (i % dims.length) * angleStep;
+                        pts += `${center + rr * Math.cos(angle)},${center + rr * Math.sin(angle)} `;
+                    }
+                    html += `<polygon points="${pts}" fill="none" stroke="#e5e7eb" stroke-width="1"/>`;
+                }
+
+                // 轴线
+                dims.forEach((dim, i) => {
+                    const ep = getPoint(i, 100);
+                    html += `<line x1="${center}" y1="${center}" x2="${ep.x}" y2="${ep.y}" stroke="#e5e7eb" stroke-width="1"/>`;
+                    const lp = getPoint(i, 115);
+                    html += `<text x="${lp.x}" y="${lp.y}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="${labelColor || '#6B7280'}">${dim.name}</text>`;
+                });
+
+                // 数据多边形
+                let pts = '';
+                dims.forEach((dim, i) => {
+                    const p = getPoint(i, scores[dim.key] || 0);
+                    pts += `${p.x},${p.y} `;
+                });
+                html += `<polygon points="${pts}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>`;
+
+                // 数据点
+                dims.forEach((dim, i) => {
+                    const p = getPoint(i, scores[dim.key] || 0);
+                    html += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${strokeColor}"/>`;
+                });
+
+                svg.innerHTML = html;
+            }
+
+            drawSingleRadar('radar-before-chart', beforeScores, 'rgba(251, 146, 60, 0.2)', '#F97316', '#9A3412');
+            drawSingleRadar('radar-after-chart', afterScores, 'rgba(16, 185, 129, 0.2)', '#10B981', '#065F46');
+
+            // 叠加对比图
+            const overlaySvg = document.getElementById('radar-overlay-chart');
+            if (overlaySvg) {
+                let html = '';
+                for (let l = 1; l <= levels; l++) {
+                    const rr = (radius / levels) * l;
+                    let pts = '';
+                    for (let i = 0; i <= dims.length; i++) {
+                        const angle = -Math.PI / 2 + (i % dims.length) * angleStep;
+                        pts += `${center + rr * Math.cos(angle)},${center + rr * Math.sin(angle)} `;
+                    }
+                    html += `<polygon points="${pts}" fill="none" stroke="#e5e7eb" stroke-width="1"/>`;
+                }
+                dims.forEach((dim, i) => {
+                    const ep = getPoint(i, 100);
+                    html += `<line x1="${center}" y1="${center}" x2="${ep.x}" y2="${ep.y}" stroke="#e5e7eb" stroke-width="1"/>`;
+                    const lp = getPoint(i, 115);
+                    html += `<text x="${lp.x}" y="${lp.y}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="#4B5563">${dim.name}</text>`;
+                });
+                // Before polygon
+                let ptsBefore = '';
+                dims.forEach((dim, i) => {
+                    const p = getPoint(i, beforeScores[dim.key] || 0);
+                    ptsBefore += `${p.x},${p.y} `;
+                });
+                html += `<polygon points="${ptsBefore}" fill="rgba(251, 146, 60, 0.15)" stroke="#F97316" stroke-width="2" stroke-dasharray="5,3"/>`;
+                // After polygon
+                let ptsAfter = '';
+                dims.forEach((dim, i) => {
+                    const p = getPoint(i, afterScores[dim.key] || 0);
+                    ptsAfter += `${p.x},${p.y} `;
+                });
+                html += `<polygon points="${ptsAfter}" fill="rgba(16, 185, 129, 0.15)" stroke="#10B981" stroke-width="2"/>`;
+                // Legend
+                html += `<line x1="180" y1="260" x2="200" y2="260" stroke="#F97316" stroke-width="2" stroke-dasharray="5,3"/><text x="205" y="264" font-size="10" fill="#F97316">训练前</text>`;
+                html += `<line x1="180" y1="275" x2="200" y2="275" stroke="#10B981" stroke-width="2"/><text x="205" y="279" font-size="10" fill="#10B981">训练后</text>`;
+                overlaySvg.innerHTML = html;
+            }
+        }
+
+        // 渲染继续改进建议
+        function renderProgressOptimization(optimizationPlan) {
+            const container = document.getElementById('progress-optimization-section');
+            let html = `<div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa fa-arrow-right mr-2 text-primary"></i>继续改进建议</h3>`;
+
+            if (optimizationPlan.priority && optimizationPlan.priority.length > 0) {
+                html += `<div class="mb-4"><h4 class="text-sm font-medium text-red-600 mb-2"><i class="fa fa-flag mr-1"></i>优先改进</h4>`;
+                optimizationPlan.priority.forEach(item => {
+                    html += `<div class="p-3 bg-red-50 rounded-lg mb-2 text-sm">
+                        <p class="font-medium text-red-700">${item.dimension || ''} ${item.score !== null && item.score !== undefined ? `(${item.score}分)` : ''}</p>
+                        <p class="text-red-600 mt-1">${item.advice || ''}</p>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+
+            if (optimizationPlan.attention && optimizationPlan.attention.length > 0) {
+                html += `<div class="mb-4"><h4 class="text-sm font-medium text-yellow-600 mb-2"><i class="fa fa-exclamation-triangle mr-1"></i>需要关注</h4>`;
+                optimizationPlan.attention.forEach(item => {
+                    html += `<div class="p-3 bg-yellow-50 rounded-lg mb-2 text-sm">
+                        <p class="font-medium text-yellow-700">${item.dimension || ''} ${item.score !== null && item.score !== undefined ? `(${item.score}分)` : ''}</p>
+                        <p class="text-yellow-600 mt-1">${item.advice || ''}</p>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+
+            if (optimizationPlan.enhance && optimizationPlan.enhance.length > 0) {
+                html += `<div><h4 class="text-sm font-medium text-green-600 mb-2"><i class="fa fa-leaf mr-1"></i>锦上添花</h4>`;
+                optimizationPlan.enhance.forEach(item => {
+                    html += `<div class="p-3 bg-green-50 rounded-lg mb-2 text-sm">
+                        <p class="font-medium text-green-700">${item.dimension || ''} ${item.score !== null && item.score !== undefined ? `(${item.score}分)` : ''}</p>
+                        <p class="text-green-600 mt-1">${item.advice || ''}</p>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+
+            if (!optimizationPlan.priority && !optimizationPlan.attention && !optimizationPlan.enhance) {
+                html += `<p class="text-gray-500 text-sm">训练后视频未检测到明确的改进建议</p>`;
+            }
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        // 获取跑步类型和性别
+        function getRunningType() {
+            const val = runningTypeSelect.value;
+            return val === 'auto' ? null : val;
+        }
+
+        function getGender() {
+            const val = genderSelect.value;
+            return val === 'auto' ? null : val;
+        }
+
+        // 分析按钮点击
+        analyzeBtn.addEventListener('click', async () => {
+            if (!videoPath) {
+                showError('请上传视频');
+                return;
+            }
+
+            if (!modelLoaded) {
+                showError('模型未加载，请检查服务器状态');
+                return;
+            }
+
+            resultsSection.classList.add('hidden');
+            loadingSection.classList.remove('hidden');
+            playLoadingVideo('loading-section');
+            progressContainer.classList.remove('hidden');
+            updateStatus('正在分析视频...', 'yellow');
+
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+                progressPercent.textContent = Math.round(progress) + '%';
+            }, 500);
+
+            try {
+                const response = await fetch('/api/analyze_single_video', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_path: videoPath,
+                        running_type: getRunningType(),
+                        gender: getGender()
+                    })
+                });
+                const data = await response.json();
+
+                clearInterval(progressInterval);
+                progress = 100;
+                progressBar.style.width = '100%';
+                progressPercent.textContent = '100%';
+
+                if (data.status === 'success') {
+                    analysisResult = data;
+                    displayResults(data);
+                    updateStatus('分析完成', 'green');
+                } else {
+                    showError(data.message);
+                }
+            } catch (error) {
+                clearInterval(progressInterval);
+                showError('分析失败: ' + error.message);
+            } finally {
+                loadingSection.classList.add('hidden');
+            }
+        });
+
+        // 清除按钮
+        clearBtn.addEventListener('click', async () => {
+            try {
+                await fetch('/api/clear_videos', { method: 'POST' });
+                videoFile = null;
+                videoPath = null;
+                uploadVideoInput.value = '';
+                videoStatus.classList.add('hidden');
+                previewSection.innerHTML = `
+                    <div class="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
+                        <div class="text-center">
+                            <i class="fa fa-video-camera text-gray-300 text-5xl mb-4"></i>
+                            <p class="text-gray-500">上传视频后在此预览</p>
+                        </div>
+                    </div>
+                `;
+                resultsSection.classList.add('hidden');
+                analyzeBtn.disabled = true;
+                progressBar.style.width = '0%';
+                progressPercent.textContent = '0%';
+                updateStatus('已清除视频', 'green');
+            } catch (error) {
+                showError('清除失败: ' + error.message);
+            }
+        });
+
+        // 获取分数颜色
+        function getScoreColor(score) {
+            if (score >= 80) return '#10B981'; // green
+            if (score >= 60) return '#F59E0B'; // yellow
+            if (score >= 40) return '#F97316'; // orange
+            return '#EF4444'; // red
+        }
+
+        // 获取进度条颜色
+        function getBarColor(score) {
+            if (score >= 80) return 'bg-green-500';
+            if (score >= 60) return 'bg-yellow-500';
+            if (score >= 40) return 'bg-orange-500';
+            return 'bg-red-500';
+        }
+
+        // 显示分析结果
+        function displayResults(data) {
+            resultsSection.classList.remove('hidden');
+            resultsSection.classList.add('fade-in');
+
+            // 综合评分
+            totalScoreEl.textContent = data.total_score;
+            
+            // 检测结果
+            const typeLabels = {
+                'sprint': '短跑',
+                'middle_distance': '中长跑',
+                'jogging': '慢跑',
+                'walking': '竞走'
+            };
+            const genderLabels = { 'male': '男性', 'female': '女性' };
+            
+            detectedTypeEl.textContent = typeLabels[data.running_type] || data.running_type;
+            detectedGenderEl.textContent = genderLabels[data.gender] || data.gender;
+
+            // 维度得分
+            const dimensions = ['core_stability', 'leg_fold_efficiency', 'landing_quality', 'propulsion', 'symmetry'];
+            const dimensionKeys = ['core', 'leg', 'landing', 'propulsion', 'symmetry'];
+            
+            dimensions.forEach((dim, index) => {
+                const key = dimensionKeys[index];
+                const score = data.radar_scores[dim];
+                const el = dimensionElements[key];
+                
+                el.score.textContent = score;
+                el.score.style.color = getScoreColor(score);
+                el.bar.style.width = score + '%';
+                el.bar.className = `h-3 rounded-full phase-bar ${getBarColor(score)}`;
+            });
+
+            // 相位得分
+            if (data.phase_scores) {
+                phaseElements.contact.textContent = data.phase_scores.contact || '--';
+                phaseElements.stance.textContent = data.phase_scores.stance || '--';
+                phaseElements.push.textContent = data.phase_scores.push_off || '--';
+                phaseElements.swing.textContent = data.phase_scores.swing || '--';
+            }
+
+            // 参数摘要
+            if (data.params_summary) {
+                paramElements.torso.textContent = data.params_summary.avg_torso_lean || '--';
+                paramElements.kneeMin.textContent = data.params_summary.knee_flex_min || '--';
+                paramElements.kneeMax.textContent = data.params_summary.knee_flex_max || '--';
+                paramElements.hip.textContent = data.params_summary.avg_hip_angle || '--';
+                paramElements.stride.textContent = data.params_summary.stride_ratio || '--';
+            }
+
+            // 绘制雷达图
+            drawRadarChart(data.radar_scores);
+
+            // 启动骨架覆盖层（canvas绘制）
+            if (data.skeleton_data && data.skeleton_data.length > 0) {
+                startSkeletonOverlay(data.skeleton_data, data.fps || 30);
+            }
+
+            // 显示优化建议
+            displayOptimizationPlan(data.optimization_plan);
+
+            // 显示训练计划
+            displayTrainingPlan(data.optimization_plan.training_plan);
+
+            // 显示关键帧骨架截图
+            if (data.frame_previews && data.frame_previews.length > 0) {
+                displayFramePreviews(data.frame_previews);
+            }
+
+            // 保存结果到历史记录
+            saveResult(data);
+        }
+
+        // 绘制雷达图
+        function drawRadarChart(scores) {
+            const dimensions = ['core_stability', 'leg_fold_efficiency', 'landing_quality', 'propulsion', 'symmetry'];
+            const labels = ['核心稳定度', '下肢折叠效率', '着地品质', '推进力', '对称性'];
+            const values = dimensions.map(d => scores[d]);
+            
+            const centerX = 175;
+            const centerY = 175;
+            const maxRadius = 120;
+            const numSides = 5;
+            const angleStep = (2 * Math.PI) / numSides;
+            const startAngle = -Math.PI / 2;
+
+            let svgContent = '';
+
+            // 绘制网格线
+            for (let r = 20; r <= maxRadius; r += 20) {
+                svgContent += `<polygon class="radar-grid" points="`;
+                for (let i = 0; i < numSides; i++) {
+                    const angle = startAngle + i * angleStep;
+                    const x = centerX + r * Math.cos(angle);
+                    const y = centerY + r * Math.sin(angle);
+                    svgContent += `${x},${y} `;
+                }
+                svgContent += `" />`;
+            }
+
+            // 绘制轴线
+            for (let i = 0; i < numSides; i++) {
+                const angle = startAngle + i * angleStep;
+                const x = centerX + maxRadius * Math.cos(angle);
+                const y = centerY + maxRadius * Math.sin(angle);
+                svgContent += `<line class="radar-axis" x1="${centerX}" y1="${centerY}" x2="${x}" y2="${y}" />`;
+            }
+
+            // 绘制标准范围（80-100分区域）
+            svgContent += `<polygon class="radar-area-standard" points="`;
+            for (let i = 0; i < numSides; i++) {
+                const angle = startAngle + i * angleStep;
+                const x = centerX + maxRadius * 0.8 * Math.cos(angle);
+                const y = centerY + maxRadius * 0.8 * Math.sin(angle);
+                svgContent += `${x},${y} `;
+            }
+            svgContent += `" />`;
+
+            // 绘制用户得分区域
+            svgContent += `<polygon class="radar-area-user" points="`;
+            for (let i = 0; i < numSides; i++) {
+                const angle = startAngle + i * angleStep;
+                const r = (values[i] / 100) * maxRadius;
+                const x = centerX + r * Math.cos(angle);
+                const y = centerY + r * Math.sin(angle);
+                svgContent += `${x},${y} `;
+            }
+            svgContent += `" />`;
+
+            // 绘制数据点和标签
+            for (let i = 0; i < numSides; i++) {
+                const angle = startAngle + i * angleStep;
+                const r = (values[i] / 100) * maxRadius;
+                const x = centerX + r * Math.cos(angle);
+                const y = centerY + r * Math.sin(angle);
+                
+                // 数据点
+                svgContent += `<circle class="radar-point" cx="${x}" cy="${y}" r="6" data-dimension="${labels[i]}" data-score="${values[i]}" />`;
+                
+                // 标签
+                const labelRadius = maxRadius + 25;
+                const labelX = centerX + labelRadius * Math.cos(angle);
+                const labelY = centerY + labelRadius * Math.sin(angle);
+                svgContent += `<text class="radar-label" x="${labelX}" y="${labelY}" dy="4">${labels[i]}</text>`;
+                
+                // 分数
+                const scoreRadius = maxRadius + 45;
+                const scoreX = centerX + scoreRadius * Math.cos(angle);
+                const scoreY = centerY + scoreRadius * Math.sin(angle);
+                svgContent += `<text class="score-circle" x="${scoreX}" y="${scoreY}" dy="4" style="fill:${getScoreColor(values[i])}">${values[i]}分</text>`;
+            }
+
+            radarChart.innerHTML = svgContent;
+
+            // 添加悬停交互
+            const points = radarChart.querySelectorAll('.radar-point');
+            const tooltip = document.getElementById('radar-tooltip');
+
+            points.forEach(point => {
+                point.addEventListener('mouseenter', (e) => {
+                    const dimension = e.target.getAttribute('data-dimension');
+                    const score = e.target.getAttribute('data-score');
+                    
+                    tooltip.textContent = `${dimension}: ${score}分`;
+                    tooltip.classList.add('visible');
+                    
+                    const rect = e.target.getBoundingClientRect();
+                    tooltip.style.left = rect.left - tooltip.offsetWidth / 2 + rect.width / 2 + 'px';
+                    tooltip.style.top = rect.top - tooltip.offsetHeight - 10 + 'px';
+                });
+
+                point.addEventListener('mouseleave', () => {
+                    tooltip.classList.remove('visible');
+                });
+            });
+        }
+
+        // 显示优化建议
+        function createExerciseCard(ex) {
+            return `
+                <div class="exercise-mini bg-gray-50 rounded p-2 mt-1 cursor-pointer hover:bg-gray-100 transition-colors"
+                     onclick="this.querySelector('.ex-details').classList.toggle('hidden'); this.querySelector('.fa-chevron-right').classList.toggle('rotate-90')">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-xs">${ex.name}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400">${ex.sets || '--'}组${ex.reps ? '×'+ex.reps : ''}${ex.duration ? '×'+ex.duration : ''}${ex.distance ? '×'+ex.distance : ''}</span>
+                            <i class="fa fa-chevron-right text-gray-300 text-xs transition-transform duration-200"></i>
+                        </div>
+                    </div>
+                    <div class="ex-details hidden mt-1.5 space-y-1 text-xs text-gray-500 border-t border-gray-200 pt-1.5">
+                        <p>${ex.description}</p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                            <p>组数：${ex.sets || '--'}组</p>
+                            ${ex.reps ? `<p>次数：${ex.reps}</p>` : ''}
+                            ${ex.duration ? `<p>时长：${ex.duration}</p>` : ''}
+                            ${ex.distance ? `<p>距离：${ex.distance}</p>` : ''}
+                            <p>休息：${ex.rest || '--'}</p>
+                            <p>节奏：${ex.tempo || '--'}</p>
+                            <p>频率：${ex.frequency || '--'}</p>
+                        </div>
+                        <p>目标：${ex.target || '--'}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayOptimizationPlan(plan) {
+            // 清空列表
+            priorityList.innerHTML = '';
+            attentionList.innerHTML = '';
+            enhanceList.innerHTML = '';
+
+            // 优先改进
+            plan.priority.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white bg-opacity-80 rounded-lg p-3';
+                div.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-medium text-red-800">${item.dimension}</span>
+                        <span class="text-sm font-bold text-red-600">${item.score !== null && item.score !== undefined ? item.score+'分' : ''}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">${item.advice}</p>
+                    ${item.exercises && item.exercises.length > 0 ? `
+                        <div class="text-xs text-gray-500 mt-2">
+                            <p class="font-medium mb-1 text-gray-700">推荐练习（点击展开详情）:</p>
+                            ${item.exercises.map(ex => createExerciseCard(ex)).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                priorityList.appendChild(div);
+            });
+
+            // 需要关注
+            plan.attention.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white bg-opacity-80 rounded-lg p-3';
+                div.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-medium text-yellow-800">${item.dimension}</span>
+                        <span class="text-sm font-bold text-yellow-600">${item.score !== null && item.score !== undefined ? item.score+'分' : ''}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">${item.advice}</p>
+                    ${item.exercises && item.exercises.length > 0 ? `
+                        <div class="text-xs text-gray-500 mt-2">
+                            <p class="font-medium mb-1 text-gray-700">推荐练习（点击展开详情）:</p>
+                            ${item.exercises.map(ex => createExerciseCard(ex)).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                attentionList.appendChild(div);
+            });
+
+            // 锦上添花
+            plan.enhance.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white bg-opacity-80 rounded-lg p-3';
+                div.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-medium text-green-800">${item.dimension}</span>
+                        <span class="text-sm font-bold text-green-600">${item.score !== null && item.score !== undefined ? item.score+'分' : ''}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">${item.advice}</p>
+                    ${item.exercises && item.exercises.length > 0 ? `
+                        <div class="text-xs text-gray-500 mt-2">
+                            <p class="font-medium mb-1 text-gray-700">推荐练习（点击展开详情）:</p>
+                            ${item.exercises.map(ex => createExerciseCard(ex)).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                enhanceList.appendChild(div);
+            });
+
+            // 如果没有问题，显示默认内容
+            if (plan.priority.length === 0 && plan.attention.length === 0 && plan.enhance.length === 0) {
+                enhanceList.innerHTML = '<p class="text-sm text-gray-600">您的跑姿非常标准，继续保持！</p>';
+            }
+        }
+
+        // 显示训练计划
+        function displayTrainingPlan(trainingPlan) {
+            if (!trainingPlan) return;
+
+            const phases = [
+                { key: 'phase1', el: trainingPhase1, colors: ['blue-800', 'blue-600', 'blue-50'] },
+                { key: 'phase2', el: trainingPhase2, colors: ['green-800', 'green-600', 'green-50'] },
+                { key: 'phase3', el: trainingPhase3, colors: ['purple-800', 'purple-600', 'purple-50'] }
+            ];
+
+            phases.forEach(({ key, el, colors: [txt, time, bg] }) => {
+                const phase = trainingPlan[key];
+                const parent = el.closest('.border') || el.parentElement;
+
+                if (!phase) {
+                    parent.innerHTML = `
+                        <div class="p-4 ${bg} rounded-lg">
+                            <p class="text-xs text-gray-500">无需针对性训练</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 更新阶段头部信息
+                parent.querySelector('h4').textContent = phase.name || parent.querySelector('h4').textContent;
+                parent.querySelector('h4').className = `font-medium text-${txt}`;
+                const durationEl = parent.querySelector('.flex .text-sm');
+                if (durationEl) durationEl.textContent = phase.duration || '';
+                const goalEl = parent.querySelector('p.text-sm.text-gray-600');
+                if (goalEl) goalEl.textContent = `目标：${phase.goal || ''}`;
+                const infoEl = parent.querySelector('p.text-xs.text-gray-500');
+                if (infoEl) {
+                    const focus = (phase.focus || []).join('、');
+                    infoEl.textContent = `重点：${focus} | 频率：${phase.frequency || ''}`;
+                }
+
+                // 渲染练习卡片
+                if (!phase.exercises || phase.exercises.length === 0) {
+                    el.innerHTML = '<p class="text-xs text-gray-500">当前阶段无需针对性训练</p>';
+                    return;
+                }
+
+                el.innerHTML = phase.exercises.map(ex => `
+                    <div class="w-full">
+                        <div class="bg-white rounded-lg border border-gray-200 p-3 cursor-pointer hover:shadow-sm transition-shadow exercise-card"
+                             onclick="this.querySelector('.exercise-details').classList.toggle('hidden'); this.querySelector('.fa-chevron-down').classList.toggle('rotate-180')">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <span class="font-medium text-sm text-gray-800">${ex.name}</span>
+                                    <span class="ml-2 text-xs text-gray-400">${ex.sets || '--'}组 ${ex.reps || ex.duration || ex.distance || ''}</span>
+                                </div>
+                                <i class="fa fa-chevron-down text-gray-400 text-xs transition-transform duration-200"></i>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">${ex.description}</div>
+                            <div class="exercise-details hidden mt-2 space-y-1.5 text-xs text-gray-600 border-t border-gray-100 pt-2">
+                                ${ex.standard ? `<p><span class="font-medium text-gray-700">动作标准：</span>${ex.standard}</p>` : ''}
+                                <div class="grid grid-cols-2 gap-1">
+                                    <p><span class="font-medium text-gray-700">组数：</span>${ex.sets || '--'}组</p>
+                                    ${ex.reps ? `<p><span class="font-medium text-gray-700">次数：</span>${ex.reps}</p>` : ''}
+                                    ${ex.duration ? `<p><span class="font-medium text-gray-700">时长：</span>${ex.duration}</p>` : ''}
+                                    ${ex.distance ? `<p><span class="font-medium text-gray-700">距离：</span>${ex.distance}</p>` : ''}
+                                    <p><span class="font-medium text-gray-700">组间休息：</span>${ex.rest || '--'}</p>
+                                    <p><span class="font-medium text-gray-700">动作节奏：</span>${ex.tempo || '--'}</p>
+                                    <p><span class="font-medium text-gray-700">训练频率：</span>${ex.frequency || '--'}</p>
+                                </div>
+                                <p><span class="font-medium text-gray-700">训练目标：</span>${ex.target || '--'}</p>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            });
+        }
+
+        // 保存结果到历史记录
+        async function saveResult(data) {
+            try {
+                const response = await fetch('/api/save_result', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                console.log('结果已保存:', result);
+            } catch (error) {
+                console.error('保存结果失败:', error);
+            }
+        }
+
+        // 帮助弹窗事件
+        helpBtn.addEventListener('click', () => {
+            helpModal.classList.remove('hidden');
+        });
+
+        closeHelp.addEventListener('click', () => {
+            helpModal.classList.add('hidden');
+        });
+
+        closeHelpBtn.addEventListener('click', () => {
+            helpModal.classList.add('hidden');
+        });
+
+        // 错误弹窗事件
+        closeErrorBtn.addEventListener('click', () => {
+            hideError();
+        });
+
+        // ========== 骨架覆盖层（Canvas绘制） ==========
+        const POSE_CONNECTIONS = [
+            [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+            [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+            [11, 23], [12, 24], [23, 24],
+            [23, 25], [25, 27], [27, 29], [27, 31], [29, 31],
+            [24, 26], [26, 28], [28, 30], [28, 32], [30, 32],
+        ];
+
+        let skeletonAnimationId = null;
+        let skeletonData = [];
+        let skeletonFps = 30;
+
+        function getConnectionColor(s, e) {
+            // 躯干 — 黄色
+            if ((s === 11 && e === 12) || (s === 23 && e === 24) ||
+                (s === 11 && e === 23) || (s === 12 && e === 24) ||
+                (s === 11 && e === 23) || (s === 12 && e === 24))
+                return 'rgb(255, 215, 0)';
+            // 手臂 — 青色
+            const leftArm = [11, 13, 15, 17, 19, 21];
+            const rightArm = [12, 14, 16, 18, 20, 22];
+            if (leftArm.includes(s) && leftArm.includes(e))
+                return 'rgb(0, 255, 255)';
+            if (rightArm.includes(s) && rightArm.includes(e))
+                return 'rgb(0, 255, 255)';
+            // 头部 — 橙色
+            const head = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            if (head.includes(s) && head.includes(e))
+                return 'rgb(255, 165, 0)';
+            // 腿部 — 品红
+            return 'rgb(255, 50, 200)';
+        }
+
+        function calculateAngle(p1, p2, p3) {
+            const v1 = [p1[0] - p2[0], p1[1] - p2[1]];
+            const v2 = [p3[0] - p2[0], p3[1] - p2[1]];
+            const dot = v1[0] * v2[0] + v1[1] * v2[1];
+            const mag1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+            const mag2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+            if (mag1 < 0.001 || mag2 < 0.001) return 0;
+            const cos = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+            return Math.acos(cos) * 180 / Math.PI;
+        }
+
+        function drawSkeleton(ctx, landmarks, w, h) {
+            if (!landmarks || landmarks.length < 33) return;
+
+            ctx.clearRect(0, 0, w, h);
+
+            const pts = landmarks.map(lm => [
+                lm[0] * w,
+                lm[1] * h
+            ]);
+
+            // 1. 绘制连线
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            for (const [s, e] of POSE_CONNECTIONS) {
+                if (s < pts.length && e < pts.length) {
+                    ctx.beginPath();
+                    ctx.moveTo(pts[s][0], pts[s][1]);
+                    ctx.lineTo(pts[e][0], pts[e][1]);
+                    ctx.strokeStyle = getConnectionColor(s, e);
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            }
+
+            // 2. 绘制关节点（黑边白心）
+            for (const pt of pts) {
+                ctx.beginPath();
+                ctx.arc(pt[0], pt[1], 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // 3. 绘制关键角度
+            const angleConfigs = [
+                ['left_elbow', 11, 13, 15, 'rgb(255,200,50)', '肘'],
+                ['right_elbow', 12, 14, 16, 'rgb(255,200,50)', '肘'],
+                ['left_knee', 23, 25, 27, 'rgb(200,50,255)', '膝'],
+                ['right_knee', 24, 26, 28, 'rgb(200,50,255)', '膝'],
+                ['left_hip', 11, 23, 25, 'rgb(0,215,255)', '髋'],
+                ['right_hip', 12, 24, 26, 'rgb(0,215,255)', '髋'],
+            ];
+
+            for (const [name, p1, p2, p3, color, label] of angleConfigs) {
+                if (p1 < pts.length && p2 < pts.length && p3 < pts.length) {
+                    const angle = calculateAngle(pts[p1], pts[p2], pts[p3]);
+                    if (angle > 0) {
+                        const cx = pts[p2][0], cy = pts[p2][1];
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, 28, 0, 2 * Math.PI);
+                        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+                        ctx.lineWidth = 6;
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, 28, 0, 2 * Math.PI);
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        // 角度值文字
+                        const text = `${Math.round(angle)}°`;
+                        ctx.font = 'bold 13px sans-serif';
+                        ctx.textAlign = 'center';
+                        const tx = cx + 35 * (pts[p1][0] - cx) / Math.max(1, Math.sqrt((pts[p1][0]-cx)**2 + (pts[p1][1]-cy)**2));
+                        const ty = cy + 35 * (pts[p1][1] - cy) / Math.max(1, Math.sqrt((pts[p1][0]-cx)**2 + (pts[p1][1]-cy)**2));
+                        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                        ctx.fillRect(tx - 16, ty - 9, 32, 16);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillText(text, tx, ty + 4);
+                    }
+                }
+            }
+        }
+
+        function startSkeletonOverlay(skelData, fps) {
+            skeletonData = skelData;
+            skeletonFps = fps || 30;
+
+            const canvas = document.getElementById('skeleton-canvas');
+            const video = document.getElementById('result-video');
+            if (!canvas || !video) return;
+
+            canvas.style.display = 'block';
+            canvas.width = video.offsetWidth;
+            canvas.height = video.offsetHeight;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            // 修正canvas像素尺寸匹配显示尺寸
+            function resizeCanvas() {
+                if (video.offsetWidth > 0 && video.offsetHeight > 0) {
+                    canvas.width = video.offsetWidth;
+                    canvas.height = video.offsetHeight;
+                }
+            }
+            window.addEventListener('resize', resizeCanvas);
+            video.addEventListener('loadedmetadata', resizeCanvas);
+
+            function getSkeletonFrame() {
+                if (skeletonData.length === 0) return null;
+                // 视频播放到当前时间，找最近的骨架帧（每3帧采样一次）
+                const frameIndex = Math.round(video.currentTime * skeletonFps / 3);
+                const idx = Math.max(0, Math.min(frameIndex, skeletonData.length - 1));
+                return skeletonData[idx];
+            }
+
+            function animateSkeleton() {
+                if (video.paused || video.ended) {
+                    skeletonAnimationId = requestAnimationFrame(animateSkeleton);
+                    return;
+                }
+                const landmarks = getSkeletonFrame();
+                if (landmarks) {
+                    if (canvas.width !== video.offsetWidth || canvas.height !== video.offsetHeight) {
+                        canvas.width = video.offsetWidth;
+                        canvas.height = video.offsetHeight;
+                    }
+                    drawSkeleton(ctx, landmarks, canvas.width, canvas.height);
+                }
+                skeletonAnimationId = requestAnimationFrame(animateSkeleton);
+            }
+
+            if (skeletonAnimationId) {
+                cancelAnimationFrame(skeletonAnimationId);
+            }
+            animateSkeleton();
+        }
+
+        // 初始化
+        checkModelStatus();
+        setInterval(checkModelStatus, 30000);
+    </script>
+</body>
+</html>
